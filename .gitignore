@@ -1,7 +1,7 @@
 # .gitignore
 
 # Ignorar segredos locais do Streamlit e ficheiros de ambiente
-.streamlit/secrets.toml
+streamlit/secrets.toml
 .env
 .venv/
 __pycache__/
