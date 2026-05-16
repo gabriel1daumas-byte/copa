@@ -242,10 +242,18 @@ else:
     if st.session_state.is_superadmin: menu_opcoes.append("👑 SUPER ADMIN GERAL")
     menu = st.sidebar.selectbox("Navegação", menu_opcoes)
     
+    # --- 🛠️ INTERFACE DO SELETOR DE GRUPO NA BARRA LATERAL (UX CORRIGIDA) ---
+    grupo_sel = None
+    if menu in ["Fazer Palpites de Jogos", "Meus Palpites", "Palpites da Galera"] and st.session_state.bolao_ativo_id != "MASTER":
+        st.sidebar.markdown("---")
+        lista_todos_grupos = sorted(list(GRUPOS_COPA.keys()))
+        grupo_sel = st.sidebar.selectbox("🎯 Escolha o Grupo/Fase:", lista_todos_grupos)
+    
     config_global = supabase.table("configuracoes_copa").select("*").eq("id", 1).execute().data[0]
     fase_ativa = config_global['fase_ativa']
     liberado_grupos = config_global.get('palpites_grupos_liberados', True)
     liberado_mata = config_global.get('palpites_matamata_liberados', False)
+    liberado_chave_bonus = config_global.get('bonus_chave_liberado', False)
 
     # --- 1. FAZER PALPITES DE JOGOS ---
     if menu == "Fazer Palpites de Jogos":
@@ -289,18 +297,17 @@ else:
                     jogos_g = [j for j in jogos_abertos if not j.get('is_mata_mata')]
                     if not jogos_g: st.info("Nenhum jogo da fase de grupos aberto.")
                     else:
-                        grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_g if get_grupo(j['time_casa']) != "Mata-Mata")))
-                        if grupos_disponiveis:
-                            grupo_sel = st.selectbox("🎯 Escolha o Grupo para visualizar/palpitar:", grupos_disponiveis, key="sb_grupo_palpites")
+                        with st.form(f"form_grupo_{grupo_sel}"):
+                            jogos_deste = [j for j in jogos_g if get_grupo(j['time_casa']) == grupo_sel]
+                            feitos = sum(1 for j in jogos_deste if str(j['id']) in mapa_meus)
+                            total = len(jogos_deste)
                             
-                            with st.form(f"form_grupo_{grupo_sel}"):
-                                jogos_deste = [j for j in jogos_g if get_grupo(j['time_casa']) == grupo_sel]
-                                feitos = sum(1 for j in jogos_deste if str(j['id']) in mapa_meus)
-                                total = len(jogos_deste)
-                                
-                                st.write(f"### Grupo {grupo_sel} — {feitos}/{total} palpites preenchidos")
-                                novos_p_g = {}
-                                
+                            st.write(f"### Grupo {grupo_sel} — {feitos}/{total} palpites preenchidos")
+                            novos_p_g = {}
+                            
+                            if not jogos_deste:
+                                st.info(f"Todos os confrontos abertos do Grupo {grupo_sel} já foram respondidos ou trancados pelo horário.")
+                            else:
                                 for j in jogos_deste:
                                     p_ant = mapa_meus.get(str(j['id']), {})
                                     gc, gf = p_ant.get('gols_casa', 0), p_ant.get('gols_fora', 0)
@@ -360,7 +367,7 @@ else:
                                         supabase.table("palpites_copa").insert(dados).execute()
                                 st.success("Palpites do Mata-Mata salvos!"); st.rerun()
 
-    # --- 1B. ABA: MEUS PALPITES (RESULTADOS + PONTOS INDIVIDUAIS + TOTAL DO GRUPO) ---
+    # --- 1B. ABA: MEUS PALPITES ---
     elif menu == "Meus Palpites":
         st.title("📋 Meus Palpites Registrados")
         jogos_db = buscar_dados_paginados("jogos_copa", "*", "fase", fase_ativa)
@@ -371,57 +378,42 @@ else:
             mapa_meus = {str(p['id_jogo']): p for p in meus_p}
             
             jogos_validos = [j for j in jogos if j.get('times_confirmados')]
-            grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_validos)))
+            jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
             
-            if grupos_disponiveis:
-                grupo_sel = st.selectbox("🎯 Escolha o Grupo para conferir suas apostas:", grupos_disponiveis, key="sb_meus_grupos_view")
-                jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
-                
-                # Loop de pré-processamento para somar os pontos acumulados exclusivamente deste grupo selecionado
-                total_pontos_grupo = 0
-                lista_jogos_processados = []
-                
-                for j in jogos_deste:
-                    p = mapa_meus.get(str(j['id']))
-                    pts_jogo = 0
-                    
-                    if p and j.get('gols_casa_real') is not None:
-                        if j.get('is_mata_mata'):
-                            pts_jogo = calcular_pontos_matamata(p['gols_casa'], p['gols_fora'], p['classificado'], j['gols_casa_real'], j['gols_fora_real'], j['classificado_real'])
-                        else:
-                            pts_jogo = calcular_pontos_grupos(p['gols_casa'], p['gols_fora'], j['gols_casa_real'], j['gols_fora_real'])
-                    
-                    total_pontos_grupo += pts_jogo
-                    lista_jogos_processados.append((j, p, pts_jogo))
-                
-                # Exibe o painel de pontos totais do grupo no topo da tela (UX Responsiva)
-                st.metric(label=f"📊 Total de Pontos Conquistados no Grupo/Fase {grupo_sel}", value=f"{total_pontos_grupo} pts")
-                st.write("")
-                
+            total_pontos_grupo = 0
+            lista_jogos_processados = []
+            
+            for j in jogos_deste:
+                p = mapa_meus.get(str(j['id']))
+                pts_jogo = 0
+                if p and j.get('gols_casa_real') is not None:
+                    if j.get('is_mata_mata'):
+                        pts_jogo = calcular_pontos_matamata(p['gols_casa'], p['gols_fora'], p['classificado'], j['gols_casa_real'], j['gols_fora_real'], j['classificado_real'])
+                    else:
+                        pts_jogo = calcular_pontos_grupos(p['gols_casa'], p['gols_fora'], j['gols_casa_real'], j['gols_fora_real'])
+                total_pontos_grupo += pts_jogo
+                lista_jogos_processados.append((j, p, pts_jogo))
+            
+            st.metric(label=f"📊 Total de Pontos Conquistados no Grupo/Fase {grupo_sel}", value=f"{total_pontos_grupo} pts")
+            st.write("")
+            
+            if not lista_jogos_processados:
+                st.info(f"Nenhum confronto registrado para o Grupo {grupo_sel} nesta fase.")
+            else:
                 for j, p, pts_jogo in lista_jogos_processados:
                     st.write(f"#### ⚽ {j['time_casa']} x {j['time_fora']}")
-                    
                     if p:
                         placar_txt = f"**Seu Palpite:** {p['gols_casa']} x {p['gols_fora']}"
-                        if j.get('is_mata_mata') and p.get('classificado'):
-                            placar_txt += f" | **Classifica:** {p['classificado']}"
+                        if j.get('is_mata_mata') and p.get('classificado'): placar_txt += f" | **Classifica:** {p['classificado']}"
                         st.success(placar_txt)
-                    else:
-                        st.error("❌ Você não registrou palpite para este confronto!")
+                    else: st.error("❌ Você não registrou palpite para este confronto!")
                         
                     if j.get('gols_casa_real') is not None:
                         real_txt = f"**Resultado Oficial:** {j['gols_casa_real']} x {j['gols_fora_real']}"
-                        if j.get('is_mata_mata') and j.get('classificado_real'):
-                            real_txt += f" | **Classificou:** {j['classificado_real']}"
+                        if j.get('is_mata_mata') and j.get('classificado_real'): real_txt += f" | **Classificou:** {j['classificado_real']}"
                         st.info(real_txt)
-                        
-                        # Mostra os pontos ganhos de forma visual e intuitiva
-                        if pts_jogo > 0:
-                            st.markdown(f"🔥 **Pontuação obtida neste jogo:** `+{pts_jogo} pontos` 🟢")
-                        else:
-                            st.markdown("🔥 **Pontuação obtida neste jogo:** `+0 pontos` 🔴")
-                    else:
-                        st.markdown("⏳ *Aguardando encerramento e resultado oficial do confronto.*")
+                        st.markdown(f"🔥 **Pontuação obtida neste jogo:** `+{pts_jogo} pontos` " + ("🟢" if pts_jogo > 0 else "🔴"))
+                    else: st.markdown("⏳ *Aguardando encerramento e resultado oficial do confronto.*")
                     st.write("---")
 
     # --- 1C. ABA: PALPITES DA GALERA ---
@@ -441,18 +433,16 @@ else:
                 jogos = ordenar_jogos(jogos_db)
                 agora = datetime.now(fuso_br)
                 jogos_validos = [j for j in jogos if j.get('times_confirmados')]
+                jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
                 
-                grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_validos)))
-                if grupos_disponiveis:
-                    grupo_sel = st.selectbox("🎯 Escolha o Grupo para espiar os rivais:", grupos_disponiveis, key="sb_galera_grupo_view")
-                    jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
-                    
-                    all_palpites = buscar_dados_paginados("palpites_copa", "*", "email_usuario", emails)
-                    mapa_palpites = {(p['id_jogo'], p['email_usuario']): p for p in all_palpites}
-                    
+                all_palpites = buscar_dados_paginados("palpites_copa", "*", "email_usuario", emails)
+                mapa_palpites = {(p['id_jogo'], p['email_usuario']): p for p in all_palpites}
+                
+                if not jogos_deste:
+                    st.info(f"Nenhum jogo pendente ou aberto para o Grupo {grupo_sel} nesta rodada.")
+                else:
                     for j in jogos_deste:
                         st.write(f"#### ⚽ {j['time_casa']} x {j['time_fora']}")
-                        
                         hf_br = converter_para_br(j['horario_fechamento'])
                         is_liberado = agora >= hf_br
                         
@@ -462,77 +452,172 @@ else:
                                 p = mapa_palpites.get((j['id'], em))
                                 if p:
                                     placar_str = f"{p['gols_casa']} x {p['gols_fora']}"
-                                    if j.get('is_mata_mata') and p.get('classificado'):
-                                        placar_str += f" ({p['classificado']})"
-                                else:
-                                    placar_str = "Não palpitou"
+                                    if j.get('is_mata_mata') and p.get('classificado'): placar_str += f" ({p['classificado']})"
+                                else: placar_str = "Não palpitou"
                                 rows_galera.append({"Jogador": mapa_nomes.get(em, em), "Palpite Registrado": placar_str})
-                            
-                            df_galera = pd.DataFrame(rows_galera)
-                            st.dataframe(df_galera, use_container_width=True, hide_index=True)
+                            st.dataframe(pd.DataFrame(rows_galera), use_container_width=True, hide_index=True)
                         else:
-                            st.warning("🔒 Palpites ocultos. A tabela de apostas da galera será revelada automaticamente faltando 29 minutos para o início do jogo!")
+                            st.warning("🔒 Palpites ocultos. A tabela de apostas da galera será revelada automaticamente faltando 29 minutes para o início do jogo!")
                         st.write("---")
 
-    # --- 2. BÔNUS 1: GRUPOS ---
+    # --- 2. BÔNUS 1: GRUPOS (COM FILTRAGEM DINÂMICA EM CASCATA - ANTI-DUPLICAÇÃO) ---
     elif menu == "Bônus 1: Videntes dos Grupos":
         st.title("🔮 Videntes da Fase de Grupos")
+        st.caption("Monte a sua classificação definitiva. Ao escolher uma seleção, ela será automaticamente filtrada das posições seguintes.")
+        
         existentes = buscar_dados_paginados("bonus_grupos", "*", "email_usuario", st.session_state.email_usuario)
         mapa_b = {b['grupo']: b for b in existentes}
+        
         with st.form("form_bonus_g"):
             respostas = {}
             for grp, times in GRUPOS_COPA.items():
                 st.subheader(f"Grupo {grp}")
                 b_ant = mapa_b.get(grp, {})
                 c1, c2, c3, c4 = st.columns(4) 
-                pos1 = c1.selectbox("1º Lugar", times, index=times.index(b_ant.get('pos1')) if b_ant.get('pos1') in times else 0, key=f"g{grp}_1")
-                pos2 = c2.selectbox("2º Lugar", times, index=times.index(b_ant.get('pos2')) if b_ant.get('pos2') in times else 1, key=f"g{grp}_2")
-                pos3 = c3.selectbox("3º Lugar", times, index=times.index(b_ant.get('pos3')) if b_ant.get('pos3') in times else 2, key=f"g{grp}_3")
-                pos4 = c4.selectbox("4º Lugar", times, index=times.index(b_ant.get('pos4')) if b_ant.get('pos4') in times else 3, key=f"g{grp}_4")
+                
+                # 1º Lugar - Todos os times disponíveis
+                opcoes_1 = times
+                val_1 = b_ant.get('pos1')
+                idx_1 = opcoes_1.index(val_1) if val_1 in opcoes_1 else 0
+                pos1 = c1.selectbox("1º Lugar", opcoes_1, index=idx_1, key=f"g{grp}_1")
+                
+                # 2º Lugar - Remove o escolhido no 1º
+                opcoes_2 = [t for t in times if t != pos1]
+                val_2 = b_ant.get('pos2')
+                idx_2 = opcoes_2.index(val_2) if val_2 in opcoes_2 else 0
+                pos2 = c2.selectbox("2º Lugar", opcoes_2, index=idx_2, key=f"g{grp}_2")
+                
+                # 3º Lugar - Remove os escolhidos no 1º e 2º
+                opcoes_3 = [t for t in times if t != pos1 and t != pos2]
+                val_3 = b_ant.get('pos3')
+                idx_3 = opcoes_3.index(val_3) if val_3 in opcoes_3 else 0
+                pos3 = c3.selectbox("3º Lugar", opcoes_3, index=idx_3, key=f"g{grp}_3")
+                
+                # 4º Lugar - Resta apenas a última seleção restante
+                opcoes_4 = [t for t in times if t != pos1 and t != pos2 and t != pos3]
+                val_4 = b_ant.get('pos4')
+                idx_4 = opcoes_4.index(val_4) if val_4 in opcoes_4 else 0
+                pos4 = c4.selectbox("4º Lugar", opcoes_4, index=idx_4, key=f"g{grp}_4")
+                
                 respostas[grp] = {"pos1": pos1, "pos2": pos2, "pos3": pos3, "pos4": pos4}
                 st.divider()
+                
             if st.form_submit_button("💾 Salvar Previsão dos Grupos", use_container_width=True):
                 for grp, dados in respostas.items():
-                    if len(set(dados.values())) < 4: st.error(f"Erro no Grupo {grp}: Seleções repetidas não são permitidas."); st.stop()
                     dados.update({'email_usuario': st.session_state.email_usuario, 'grupo': grp})
                     if grp in mapa_b: supabase.table("bonus_grupos").update(dados).eq("email_usuario", st.session_state.email_usuario).eq("grupo", grp).execute()
                     else: supabase.table("bonus_grupos").insert(dados).execute()
-                st.success("Previsões gravadas com sucesso!")
+                st.success("Previsões dos grupos gravadas sem duplicidades!")
 
-    # --- 3. BÔNUS 2: CHAVE DO MATA-MATA ---
+    # --- 3. BÔNUS 2: CHAVE FINAL (SIMULADOR DE BRACKET SEQUENCIAL BASEADO EM ID) ---
     elif menu == "Bônus 2: Chave Final":
-        st.title("🛤️ Caminho para a Glória")
-        b2_salvo = supabase.table("bonus_chave").select("*").eq("email_usuario", st.session_state.email_usuario).execute().data
-        meu_b2 = b2_salvo[0] if b2_salvo else {}
-        def parse_lista(campo): return meu_b2.get(campo, '').split(',') if meu_b2.get(campo) else []
-        sel_oit = parse_lista('oitavas')
-        sel_qua = parse_lista('quartas')
-        sel_sem = parse_lista('semis')
-        sel_fin = parse_lista('finalistas')
-        sel_cam = meu_b2.get('campeao', '')
+        st.title("🛤️ Caminho para a Glória — Simulador do Mata-Mata")
         
-        with st.form("form_chave_matamata"):
-            st.subheader("1. 16 equipas - Oitavas (1 pt/cada)")
-            oitavas = st.multiselect("Classificados", TIMES_COPA, default=sel_oit if set(sel_oit).issubset(TIMES_COPA) else [], max_selections=16)
-            st.subheader("2. 8 equipas - Quartas (2 pts/cada)")
-            quartas = st.multiselect("Quem passa?", oitavas, default=[x for x in sel_qua if x in oitavas], max_selections=8)
-            st.subheader("3. 4 equipas - Semifinais (3 pts/cada)")
-            semis = st.multiselect("Chegam nas Semis?", quartas, default=[x for x in sel_sem if x in quartas], max_selections=4)
-            st.subheader("4. Finalistas (5 pts/cada)")
-            finalistas = st.multiselect("Disputam a Final?", semis, default=[x for x in sel_fin if x in semis], max_selections=2)
-            st.subheader("5. O CAMPEÃO (10 pts)")
-            op_campeao = finalistas if len(finalistas) == 2 else ["Selecione 2 finalistas"]
-            idx_camp = op_campeao.index(sel_cam) if sel_cam in op_campeao else 0
-            campeao = st.selectbox("Quem levanta a taça?", op_campeao, index=idx_camp)
-            if st.form_submit_button("💾 Salvar Árvore", use_container_width=True):
-                if len(oitavas) != 16 or len(quartas) != 8 or len(semis) != 4 or len(finalistas) != 2: st.error("Preencha a quantidade exata de seleções em todas as fases.")
-                else:
-                    dados_chave = {"oitavas": ",".join(oitavas), "quartas": ",".join(quartas), "semis": ",".join(semis), "finalistas": ",".join(finalistas), "campeao": campeao}
-                    if b2_salvo: supabase.table("bonus_chave").update(dados_chave).eq("email_usuario", st.session_state.email_usuario).execute()
-                    else:
-                        dados_chave["email_usuario"] = st.session_state.email_usuario
-                        supabase.table("bonus_chave").insert(dados_chave).execute()
-                    st.success("Chave gravada!")
+        jogos_r32 = buscar_dados_paginados("jogos_copa", "*", "fase", "Trinta-e-dois-avos de Final")
+        agora = datetime.now(fuso_br)
+        
+        passou_do_prazo_r32 = False
+        if jogos_r32:
+            primeiro_fechamento = min(converter_para_br(j['horario_fechamento']) for j in jogos_r32 if j.get('horario_fechamento'))
+            if agora >= primeiro_fechamento:
+                passou_do_prazo_r32 = True
+
+        if not liberado_chave_bonus:
+            st.error("🔒 O preenchimento da Árvore do Mata-Mata será liberado pelo Super Admin assim que a Fase de Grupos terminar!")
+        elif passou_do_prazo_r32:
+            st.error("🔒 Mercado Fechado! O primeiro jogo dos Trinta-e-dois-avos de Final já começou, impossibilitando novos envios ou alterações na árvore.")
+        
+        if liberado_chave_bonus:
+            if not jogos_r32 or len(jogos_r32) != 16:
+                st.info("Aguardando o Super Admin definir e cadastrar os 16 confrontos oficiais dos Trinta-e-dois-avos no painel de controle.")
+            else:
+                jogos_r32_ordenados = sorted(jogos_r32, key=lambda x: x['id'])
+                
+                b2_salvo = supabase.table("bonus_chave").select("*").eq("email_usuario", st.session_state.email_usuario).execute().data
+                meu_b2 = b2_salvo[0] if b2_salvo else {}
+                def parse_lista(campo): return meu_b2.get(campo, '').split(',') if meu_b2.get(campo) else []
+
+                sel_oit = parse_lista('oitavas')
+                sel_qua = parse_lista('quartas')
+                sel_sem = parse_lista('semis')
+                sel_fin = parse_lista('finalistas')
+                sel_cam = meu_b2.get('campeao', '')
+
+                status_trava_componente = passou_do_prazo_r32
+
+                st.subheader("1. Rodada de 32 (Defina quem avança para as Oitavas)")
+                vencedores_r32 = []
+                c_a, c_b = st.columns(2)
+                for idx, j in enumerate(jogos_r32_ordenados):
+                    col_alvo = c_a if idx < 8 else c_b
+                    with col_alvo:
+                        opcoes = [j['time_casa'], j['time_fora']]
+                        idx_p = opcoes.index(sel_oit[idx]) if idx < len(sel_oit) and sel_oit[idx] in opcoes else 0
+                        venc = st.selectbox(f"Jogo {idx+1}: {j['time_casa']} x {j['time_fora']}", opcoes, index=idx_p, key=f"b2_r32_{j['id']}", disabled=status_trava_componente)
+                        vencedores_r32.append(venc)
+
+                st.write("---")
+                st.subheader("2. Rodada de 16 — Oitavas (Defina quem avança para as Quartas)")
+                vencedores_r16 = []
+                c_c, c_d = st.columns(2)
+                for i in range(0, 16, 2):
+                    col_alvo = c_c if i < 8 else c_d
+                    with col_alvo:
+                        t1, t2 = vencedores_r32[i], vencedores_r32[i+1]
+                        opcoes = [t1, t2]
+                        pos_lista = i // 2
+                        idx_p = opcoes.index(sel_qua[pos_lista]) if pos_lista < len(sel_qua) and sel_qua[pos_lista] in opcoes else 0
+                        venc = st.selectbox(f"Mata {pos_lista+1}: {t1} x {t2}", opcoes, index=idx_p, key=f"b2_r16_{i}", disabled=status_trava_componente)
+                        vencedores_r16.append(venc)
+
+                st.write("---")
+                st.subheader("3. Rodada de 8 — Quartas (Defina quem avança para as Semis)")
+                vencedores_r8 = []
+                c_e, c_f = st.columns(2)
+                for i in range(0, 8, 2):
+                    col_alvo = c_e if i < 4 else c_f
+                    with col_alvo:
+                        t1, t2 = vencedores_r16[i], vencedores_r16[i+1]
+                        opcoes = [t1, t2]
+                        pos_lista = i // 2
+                        idx_p = opcoes.index(sel_sem[pos_lista]) if pos_lista < len(sel_sem) and sel_sem[pos_lista] in opcoes else 0
+                        venc = st.selectbox(f"Quartas {pos_lista+1}: {t1} x {t2}", opcoes, index=idx_p, key=f"b2_r8_{i}", disabled=status_trava_componente)
+                        vencedores_r8.append(venc)
+
+                st.write("---")
+                st.subheader("4. Rodada de 4 — Semifinais (Defina os 2 Finalistas)")
+                vencedores_r4 = []
+                c_g, c_h = st.columns(2)
+                for i in range(0, 4, 2):
+                    col_alvo = c_g if i == 0 else c_h
+                    with col_alvo:
+                        t1, t2 = vencedores_r8[i], vencedores_r8[i+1]
+                        opcoes = [t1, t2]
+                        pos_lista = i // 2
+                        idx_p = opcoes.index(sel_fin[pos_lista]) if pos_lista < len(sel_fin) and sel_fin[pos_lista] in opcoes else 0
+                        venc = st.selectbox(f"Semi {pos_lista+1}: {t1} x {t2}", opcoes, index=idx_p, key=f"b2_r4_{i}", disabled=status_trava_componente)
+                        vencedores_r4.append(venc)
+
+                st.write("---")
+                st.subheader("🏆 5. Grande Final (Defina o Campeão do Mundo)")
+                tf1, tf2 = vencedores_r4[0], vencedores_r4[1]
+                opcoes_f = [tf1, tf2]
+                idx_p = opcoes_f.index(sel_cam) if sel_cam in opcoes_f else 0
+                campeao_escolhido = st.selectbox(f"Disputa do Título: {tf1} x {tf2}", opcoes_f, index=idx_p, key="b2_final_master", disabled=status_trava_componente)
+
+                st.write("")
+                if not status_trava_componente:
+                    if st.button("💾 Gravar Árvore do Mata-Mata Completa", use_container_width=True, type="primary"):
+                        dados_chave = {
+                            "oitavas": ",".join(vencedores_r32), "quartas": ",".join(vencedores_r16),
+                            "semis": ",".join(vencedores_r8), "finalistas": ",".join(vencedores_r4),
+                            "campeao": campeao_escolhido
+                        }
+                        if b2_salvo: supabase.table("bonus_chave").update(dados_chave).eq("email_usuario", st.session_state.email_usuario).execute()
+                        else:
+                            dados_chave["email_usuario"] = st.session_state.email_usuario
+                            supabase.table("bonus_chave").insert(dados_chave).execute()
+                        st.success("Sua árvore de palpites foi salva com sucesso!")
 
     # --- 4. CLASSIFICAÇÃO GERAL ---
     elif menu == "Classificação Geral":
@@ -561,9 +646,7 @@ else:
                         return p
                     else:
                         if row['gols_casa'] == row['gols_casa_real'] and row['gols_fora'] == row['gols_fora_real']: return 2
-                        res_p = 'C' if row['gols_casa'] > row['gols_fora'] else ('F' if row['gols_fora'] > row['gols_casa'] else 'E')
-                        res_r = 'C' if row['gols_casa_real'] > row['gols_fora_real'] else ('F' if row['gols_fora_real'] > row['gols_casa_real'] else 'E')
-                        return 1 if res_p == res_r else 0
+                        return 1 if ('C' if row['gols_casa'] > row['gols_fora'] else ('F' if row['gols_fora'] > row['gols_casa'] else 'E')) == ('C' if row['gols_casa_real'] > row['gols_fora_real'] else ('F' if row['gols_fora_real'] > row['gols_casa_real'] else 'E')) else 0
 
                 df_comp['pts'] = df_comp.apply(calcular_pontos_linha, axis=1)
                 for em, pts in df_comp.groupby('email')['pts'].sum().to_dict().items(): pontos_por_usuario[em]["Jogos"] = pts
@@ -679,7 +762,7 @@ else:
             g_c = gab_c_db[0] if gab_c_db else {}
             def parse_g(campo): return g_c.get(campo, '').split(',') if g_c.get(campo) else []
             with st.form("form_gab_chave"):
-                oit = st.multiselect("As 16 Oitavas Reais", TIMES_COPA, default=parse_g('oitavas'), max_selections=16)
+                oit = st.multiselect("As 16 Oitavas Reais (Vindas dos 32-avos)", TIMES_COPA, default=parse_g('oitavas'), max_selections=16)
                 qua = st.multiselect("As 8 Quartas Reais", TIMES_COPA, default=parse_g('quartas'), max_selections=8)
                 sem = st.multiselect("As 4 Semis Reais", TIMES_COPA, default=parse_g('semis'), max_selections=4)
                 fin = st.multiselect("Os 2 Finalistas Reais", TIMES_COPA, default=parse_g('finalistas'), max_selections=2)
@@ -696,6 +779,7 @@ else:
             nova_r = st.text_input("Fase em Destaque", value=fase_ativa)
             switch_g = st.toggle("Liberar Palpites: Fase de Grupos", value=liberado_grupos)
             switch_m = st.toggle("Liberar Palpites: Mata-Mata", value=liberado_mata)
+            switch_bc = st.toggle("Liberar Bônus 2: Chave Final (Pós-Grupos)", value=liberado_chave_bonus)
             st.divider()
             st.write("🔧 **Criação Direta de Ligas (Superadmin)**")
             with st.form("form_criar_tenant_master"):
@@ -709,5 +793,5 @@ else:
                     st.success(f"Liga '{nome_b}' criada!"); st.rerun()
 
             if st.button("💾 Salvar Configurações de Trava", use_container_width=True):
-                supabase.table("configuracoes_copa").update({"fase_ativa": nova_r, "palpites_grupos_liberados": switch_g, "palpites_matamata_liberados": switch_m}).eq("id", 1).execute()
+                supabase.table("configuracoes_copa").update({"fase_ativa": nova_r, "palpites_grupos_liberados": switch_g, "palpites_matamata_liberados": switch_m, "bonus_chave_liberado": switch_bc}).eq("id", 1).execute()
                 st.success("Configurações aplicadas!"); st.rerun()
