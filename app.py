@@ -120,12 +120,11 @@ if not st.session_state.logado:
                     st.rerun()
 
 # ==========================================
-# ECRÃ 2: LOBBY DE LIGAS UNIFICADO (CORRIGIDO PARA SUPERADMIN)
+# ECRÃ 2: LOBBY DE LIGAS UNIFICADO 
 # ==========================================
 elif st.session_state.bolao_ativo_id is None:
     st.title(f"👋 Olá, {st.session_state.nome_usuario}!")
     
-    # Se for Superadmin, exibe o painel mestre de cara como opção prioritária
     if st.session_state.is_superadmin:
         st.write("### 👑 Ferramentas de Controle Master")
         if st.button("🚀 Acessar Painel Master Geral (Gerenciar Jogos, Travar Palpites)", type="primary", use_container_width=True):
@@ -142,24 +141,21 @@ elif st.session_state.bolao_ativo_id is None:
         c1, c2, c3 = st.columns(3)
         for idx, grupo in enumerate(meus_grupos):
             with [c1, c2, c3][idx % 3]:
-                if st.session_state.is_superadmin:
-                    b_id, b_nome, b_admin = grupo['id'], grupo['nome'], True
-                else:
-                    b_id, b_nome, b_admin = grupo['id_bolao'], grupo['boloes']['nome'], grupo['is_admin']
+                if st.session_state.is_superadmin: b_id, b_nome, b_admin = grupo['id'], grupo['nome'], True
+                else: b_id, b_nome, b_admin = grupo['id_bolao'], grupo['boloes']['nome'], grupo['is_admin']
                     
                 st.info(f"🏆 **{b_nome}**")
                 if st.button("Entrar na Liga", key=f"lk_{b_id}", use_container_width=True):
                     st.session_state.update(bolao_ativo_id=b_id, bolao_ativo_nome=b_nome, is_admin_bolao_ativo=b_admin)
                     st.rerun()
-    else:
-        st.warning("Nenhuma liga encontrada no momento.")
+    else: st.warning("Nenhuma liga encontrada no momento.")
     
     st.divider()
     if st.button("🚪 Desconectar Conta", use_container_width=True):
         st.session_state.clear(); st.rerun()
 
 # ==========================================
-# ECRÃ 3: DENTRO DO BOLÃO / CONTROLE
+# ECRÃ 3: DENTRO DO BOLÃO
 # ==========================================
 else:
     nome_exibicao_sidebar = st.session_state.bolao_ativo_nome
@@ -170,9 +166,7 @@ else:
         st.rerun()
         
     st.sidebar.divider()
-    
     menu_opcoes = []
-    # Só libera menus de palpites se não estiver no painel "MASTER" puro
     if st.session_state.bolao_ativo_id != "MASTER":
         menu_opcoes.extend(["Fazer Palpites de Jogos", "Bônus 1: Videntes dos Grupos", "Bônus 2: Chave Final", "Classificação Geral"])
         if st.session_state.is_admin_bolao_ativo: menu_opcoes.append("⚙️ Admin do Grupo")
@@ -185,7 +179,7 @@ else:
     liberado_grupos = config_global.get('palpites_grupos_liberados', True)
     liberado_mata = config_global.get('palpites_matamata_liberados', False)
 
-    # --- 1. FAZER PALPITES DE JOGOS ---
+    # --- 1. FAZER PALPITES DE JOGOS (COM COMBO E BOTÃO POR GRUPO) ---
     if menu == "Fazer Palpites de Jogos":
         st.title(f"Palpites - {fase_ativa}")
         jogos_db = buscar_dados_paginados("jogos_copa", "*", "fase", fase_ativa)
@@ -196,6 +190,12 @@ else:
             meus_p = buscar_dados_paginados("palpites_copa", "*", "email_usuario", st.session_state.email_usuario)
             mapa_meus = {str(p['id_jogo']): p for p in meus_p}
             
+            def get_grupo(time_nome):
+                for grp, times in GRUPOS_COPA.items():
+                    if time_nome in times: return grp
+                return "Mata-Mata"
+            
+            # Trava estrita de 30 minutos antes do jogo
             jogos_abertos = []
             for j in jogos:
                 if not j.get('times_confirmados'): continue
@@ -206,13 +206,9 @@ else:
                 
             if not jogos_abertos: st.warning("🔒 Todos os jogos estão fechados ou bloqueados pelo Super Admin.")
             else:
-                def get_grupo(time_nome):
-                    for grp, times in GRUPOS_COPA.items():
-                        if time_nome in times: return grp
-                    return "Mata-Mata"
-
                 aba_pendentes, aba_grupos, aba_mata = st.tabs(["🚨 Faltam Palpitar", "⚽ Fase de Grupos", "🔥 Mata-Mata"])
 
+                # --- ABA PENDENTES (Apenas o que falta salvar) ---
                 with aba_pendentes:
                     jogos_faltando = [j for j in jogos_abertos if str(j['id']) not in mapa_meus]
                     if not jogos_faltando: st.success("🎉 Parabéns! Todos os seus palpites estão em dia!")
@@ -237,37 +233,43 @@ else:
                                     supabase.table("palpites_copa").insert(dados).execute()
                                 st.success("Palpites pendentes guardados!"); st.rerun()
 
+                # --- ABA GRUPOS (UX COM COMBO-BOX E BOTÃO DE SALVAR POR GRUPO) ---
                 with aba_grupos:
                     jogos_g = [j for j in jogos_abertos if not j.get('is_mata_mata')]
                     if not jogos_g: st.info("Nenhum jogo da fase de grupos aberto.")
                     else:
-                        with st.form("form_grupos"):
-                            novos_p_g = {}
-                            for grp in sorted(GRUPOS_COPA.keys()):
-                                jogos_deste = [j for j in jogos_g if get_grupo(j['time_casa']) == grp]
-                                if jogos_deste:
-                                    feitos = sum(1 for j in jogos_deste if str(j['id']) in mapa_meus)
-                                    total = len(jogos_deste)
-                                    icone = "✅" if feitos == total else "⏳"
-                                    with st.expander(f"{icone} Grupo {grp} ({feitos}/{total})", expanded=(feitos < total)):
-                                        for j in jogos_deste:
-                                            p_ant = mapa_meus.get(str(j['id']), {})
-                                            gc, gf = p_ant.get('gols_casa', 0), p_ant.get('gols_fora', 0)
-                                            st.write(f"**{j['time_casa']} x {j['time_fora']}**")
-                                            c1, c2, c3 = st.columns([3, 1, 3])
-                                            v_casa = c1.number_input(f"Gols {j['time_casa']}", min_value=0, step=1, value=gc, key=f"g_c_{j['id']}")
-                                            c2.markdown("<h3 style='text-align: center; padding-top: 25px;'>X</h3>", unsafe_allow_html=True)
-                                            v_fora = c3.number_input(f"Gols {j['time_fora']}", min_value=0, step=1, value=gf, key=f"g_f_{j['id']}")
-                                            novos_p_g[j['id']] = {"gols_casa": v_casa, "gols_fora": v_fora, "classificado": None}
-                                            st.write("---")
-                            if st.form_submit_button("💾 Salvar Todos os Grupos", use_container_width=True):
-                                for id_j, dados in novos_p_g.items():
-                                    if str(id_j) in mapa_meus: supabase.table("palpites_copa").update(dados).eq("email_usuario", st.session_state.email_usuario).eq("id_jogo", id_j).execute()
-                                    else:
-                                        dados.update({"email_usuario": st.session_state.email_usuario, "id_jogo": id_j})
-                                        supabase.table("palpites_copa").insert(dados).execute()
-                                st.success("Palpites salvos com sucesso!"); st.rerun()
+                        grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_g if get_grupo(j['time_casa']) != "Mata-Mata")))
+                        if grupos_disponiveis:
+                            grupo_sel = st.selectbox("🎯 Escolha o Grupo para visualizar/palpitar:", grupos_disponiveis, key="sb_grupo_palpites")
+                            
+                            with st.form(f"form_grupo_{grupo_sel}"):
+                                jogos_deste = [j for j in jogos_g if get_grupo(j['time_casa']) == grupo_sel]
+                                feitos = sum(1 for j in jogos_deste if str(j['id']) in mapa_meus)
+                                total = len(jogos_deste)
+                                
+                                st.write(f"### Grupo {grupo_sel} — {feitos}/{total} palpites preenchidos")
+                                novos_p_g = {}
+                                
+                                for j in jogos_deste:
+                                    p_ant = mapa_meus.get(str(j['id']), {})
+                                    gc, gf = p_ant.get('gols_casa', 0), p_ant.get('gols_fora', 0)
+                                    st.write(f"**{j['time_casa']} x {j['time_fora']}**")
+                                    c1, c2, c3 = st.columns([3, 1, 3])
+                                    v_casa = c1.number_input(f"Gols {j['time_casa']}", min_value=0, step=1, value=gc, key=f"g_c_{j['id']}")
+                                    c2.markdown("<h3 style='text-align: center; padding-top: 25px;'>X</h3>", unsafe_allow_html=True)
+                                    v_fora = c3.number_input(f"Gols {j['time_fora']}", min_value=0, step=1, value=gf, key=f"g_f_{j['id']}")
+                                    novos_p_g[j['id']] = {"gols_casa": v_casa, "gols_fora": v_fora, "classificado": None}
+                                    st.write("---")
+                                    
+                                if st.form_submit_button(f"💾 Salvar Palpites do Grupo {grupo_sel}", use_container_width=True):
+                                    for id_j, dados in novos_p_g.items():
+                                        if str(id_j) in mapa_meus: supabase.table("palpites_copa").update(dados).eq("email_usuario", st.session_state.email_usuario).eq("id_jogo", id_j).execute()
+                                        else:
+                                            dados.update({"email_usuario": st.session_state.email_usuario, "id_jogo": id_j})
+                                            supabase.table("palpites_copa").insert(dados).execute()
+                                    st.success(f"Palpites do Grupo {grupo_sel} salvos com sucesso!"); st.rerun()
 
+                # --- ABA MATA-MATA ---
                 with aba_mata:
                     jogos_m = [j for j in jogos_abertos if j.get('is_mata_mata')]
                     if not jogos_m: st.info("Nenhum jogo de Mata-Mata liberado ainda.")
@@ -346,7 +348,6 @@ else:
             op_campeao = finalistas if len(finalistas) == 2 else ["Selecione 2 finalistas"]
             idx_camp = op_campeao.index(sel_cam) if sel_cam in op_campeao else 0
             campeao = st.selectbox("Quem levanta a taça?", op_campeao, index=idx_camp)
-            
             if st.form_submit_button("💾 Salvar Árvore", use_container_width=True):
                 if len(oitavas) != 16 or len(quartas) != 8 or len(semis) != 4 or len(finalistas) != 2: st.error("Preencha a quantidade exata de seleções em todas as fases.")
                 else:
@@ -357,12 +358,11 @@ else:
                         supabase.table("bonus_chave").insert(dados_chave).execute()
                     st.success("Chave gravada!")
 
-    # --- 4. CLASSIFICAÇÃO GERAL (VETORIZADA - SUPORTA 100K+ LINHAS) ---
+    # --- 4. CLASSIFICAÇÃO GERAL ---
     elif menu == "Classificação Geral":
         st.title(f"🏆 Classificação - {st.session_state.bolao_ativo_nome}")
         membros = buscar_dados_paginados("membros_bolao", "email_usuario", "id_bolao", st.session_state.bolao_ativo_id)
         emails = [m['email_usuario'].lower() for m in membros]
-        
         if emails:
             usuarios_dados = buscar_dados_paginados("usuarios", "email, nome", "email", emails)
             jogos_enc = buscar_dados_paginados("jogos_copa", "*")
@@ -509,25 +509,24 @@ else:
                     dados_g_chave = {"id": 1, "oitavas": ",".join(oit), "quartas": ",".join(qua), "semis": ",".join(sem), "finalistas": ",".join(fin), "campeao": camp}
                     if gab_c_db: supabase.table("gabarito_chave").update(dados_g_chave).eq("id", 1).execute()
                     else: supabase.table("gabarito_chave").insert(dados_g_chave).execute()
-                    st.success("Gabarito da Chave atualizado!")
+                    st.success("Gabarito da Chave updated!")
                     
         with sa6:
             st.subheader("Travas e Configurações Master")
             nova_r = st.text_input("Fase em Destaque", value=fase_ativa)
             switch_g = st.toggle("Liberar Palpites: Fase de Grupos", value=liberado_grupos)
             switch_m = st.toggle("Liberar Palpites: Mata-Mata", value=liberado_mata)
-            
             st.divider()
             st.write("🔧 **Criação Direta de Ligas (Superadmin)**")
             with st.form("form_criar_tenant_master"):
                 nome_b = st.text_input("Nome da Liga/Tenant")
-                admin_b = st.text_input("E-mail do Administrador da Liga").lower().strip()
+                admin_b = st.text_input("E-mail do Administrador").lower().strip()
                 submit_liga = st.form_submit_button("Criar Liga Corporativa", use_container_width=True)
                 if submit_liga and nome_b and admin_b:
                     if not supabase.table("usuarios").select("email").eq("email", admin_b).execute().data: supabase.table("usuarios").insert({"email": admin_b, "nome": "Aguardando..."}).execute()
                     novo_b = supabase.table("boloes").insert({"nome": nome_b}).execute().data[0]
                     supabase.table("membros_bolao").insert({"id_bolao": novo_b['id'], "email_usuario": admin_b, "is_admin": True}).execute()
-                    st.success(f"Liga '{nome_b}' criada com sucesso!"); st.rerun()
+                    st.success(f"Liga '{nome_b}' criada!"); st.rerun()
 
             if st.button("💾 Salvar Configurações de Trava", use_container_width=True):
                 supabase.table("configuracoes_copa").update({"fase_ativa": nova_r, "palpites_grupos_liberados": switch_g, "palpites_matamata_liberados": switch_m}).eq("id", 1).execute()
