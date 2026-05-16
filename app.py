@@ -102,7 +102,7 @@ def calcular_pontos_grupos(p_c, p_f, r_c, r_f):
     if res_p == res_r: return 1
     return 0
 
-def calcular_pontos_matamata(p_c, p_f, p_class, r_c, r_f, r_class):
+def calcular_pontos_mata_mata(p_c, p_f, p_class, r_c, r_f, r_class):
     if pd.isna(r_c) or pd.isna(r_f) or pd.isna(p_c) or pd.isna(p_f) or pd.isna(r_class): return 0
     res_p = 'C' if p_c > p_f else ('F' if p_f > p_c else 'E')
     res_r = 'C' if r_c > r_f else ('F' if r_f > r_c else 'E')
@@ -432,7 +432,7 @@ else:
                     pts_jogo = 0
                     if p and j.get('gols_casa_real') is not None:
                         if j.get('is_mata_mata'):
-                            pts_jogo = calcular_pontos_matamata(p['gols_casa'], p['gols_fora'], p['classificado'], j['gols_casa_real'], j['gols_fora_real'], j['classificado_real'])
+                            pts_jogo = calcular_pontos_mata_mata(p['gols_casa'], p['gols_fora'], p['classificado'], j['gols_casa_real'], j['gols_fora_real'], j['classificado_real'])
                         else:
                             pts_jogo = calcular_pontos_grupos(p['gols_casa'], p['gols_fora'], j['gols_casa_real'], j['gols_fora_real'])
                     total_pontos_grupo += pts_jogo
@@ -909,6 +909,7 @@ else:
             else:
                 for j in ordenar_jogos(jogos_fase_existentes): st.text(f"ID: {j['id']} | {j['time_casa']} x {j['time_fora']} - Fechamento: {converter_para_br(j['horario_fechamento']).strftime('%d/%m %H:%M')}")
             
+        # --- 🔍 INTERFACE DE LANÇAMENTO EXCLUSIVA TOTALMENTE ABERTA (SEM EXPANDER E COM UX STATUS BADGES) ---
         with sa3:
             st.subheader("⚽ Emissão de Resultados Reais da Copa")
             modo_placar = st.radio("Filtro de busca:", ["🚨 Placares Faltando (Jogos Iniciados Sem Resultado)", "🔍 Filtrar por Fase/Grupo Completo"], horizontal=True, key="rb_modo_placar_master")
@@ -934,18 +935,38 @@ else:
                         jogos_filtrados_placar = [j for j in jogos_filtrados_placar if get_grupo(j['time_casa']) == grupo_placar_sel]
             
             if jogos_filtrados_placar:
+                st.write("---")
                 for j in ordenar_jogos(jogos_filtrados_placar):
-                    with st.expander(f"⚙️ ID: {j['id']} | {j['time_casa']} x {j['time_fora']} ({j['fase']})"):
-                        c1, c2 = st.columns(2)
-                        r_c = c1.number_input("Gols Reais Casa", min_value=0, step=1, value=j.get('gols_casa_real') or 0, key=f"rrc_m_{j['id']}")
-                        r_f = c2.number_input("Gols Reais Fora", min_value=0, step=1, value=j.get('gols_fora_real') or 0, key=f"rrf_m_{j['id']}")
-                        r_class = None
-                        if j.get('is_mata_mata'): r_class = st.radio("Quem se classificou de fato?", [j['time_casa'], j['time_fora']], key=f"rcl_m_{j['id']}", horizontal=True)
-                        if st.button("Salvar Resultado Oficial", key=f"btn_save_r_{j['id']}", use_container_width=True):
-                            up = {"gols_casa_real": r_c, "gols_fora_real": r_f}
-                            if r_class: up["classificado_real"] = r_class
-                            supabase.table("jogos_copa").update(up).eq("id", j['id']).execute()
-                            st.success("Placar registrado com sucesso!"); st.rerun()
+                    is_salvo = j.get('gols_casa_real') is not None and j.get('gols_fora_real') is not None
+                    
+                    #UX DEMONSTRATION DE STATUS NA HEAD DA LINHA
+                    if is_salvo:
+                        st.markdown(f"#### 🟢 **[SALVO]** {j['time_casa']} vs {j['time_fora']} — *({j['fase']})*")
+                    else:
+                        st.markdown(f"#### 2017 🟡 **[PENDENTE]** {j['time_casa']} vs {j['time_fora']} — *({j['fase']})*")
+                    
+                    c_c1, c_c2, c_c3 = st.columns([2, 2, 2]) if not j.get('is_mata_mata') else st.columns([2, 2, 3])
+                    
+                    # Carrega placares salvos automaticamente nas caixas de input
+                    val_casa = int(j['gols_casa_real']) if j.get('gols_casa_real') is not None else 0
+                    val_fora = int(j['gols_fora_real']) if j.get('gols_fora_real') is not None else 0
+                    
+                    r_c = c_c1.number_input(f"Gols {j['time_casa']}", min_value=0, step=1, value=val_casa, key=f"rrc_m_{j['id']}")
+                    r_f = c_c2.number_input(f"Gols {j['time_fora']}", min_value=0, step=1, value=val_fora, key=f"rrf_m_{j['id']}")
+                    
+                    r_class = None
+                    if j.get('is_mata_mata'):
+                        op_class = [j['time_casa'], j['time_fora']]
+                        idx_class = op_class.index(j['classificado_real']) if j.get('classificado_real') in op_class else 0
+                        r_class = c_c3.radio(f"Classificado Real:", op_class, index=idx_class, key=f"rcl_m_{j['id']}", horizontal=True)
+                    
+                    if st.button(f"💾 Atualizar Confronto (ID {j['id']})", key=f"btn_save_r_{j['id']}", use_container_width=True):
+                        up = {"gols_casa_real": r_c, "gols_fora_real": r_f}
+                        if r_class: up["classificado_real"] = r_class
+                        supabase.table("jogos_copa").update(up).eq("id", j['id']).execute()
+                        st.success(f"Resultado gravado!")
+                        st.rerun()
+                    st.markdown("<hr style='margin: 8px 0px; border-color: #444;'>", unsafe_allow_html=True)
 
         with sa4:
             st.subheader("Gabarito Oficial: Classificação de Grupos")
