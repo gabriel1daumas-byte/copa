@@ -143,7 +143,8 @@ def calcular_pontos_bonus2(meu_b2, gab_b2):
     pontos += len(set(m_qua) & set(g_qua)) * 2
 
     m_sem = meu_b2.get('semis','').split(',') if meu_b2.get('semis') else []
-    g_sem = gab_b2.get('semis','split(',') if gab_b2.get('semis') else []
+    # CORRIGIDO: A aspa que estava fora do lugar na linha abaixo:
+    g_sem = gab_b2.get('semis','').split(',') if gab_b2.get('semis') else []
     pontos += len(set(m_sem) & set(g_sem)) * 3
 
     m_fin = meu_b2.get('finalistas','').split(',') if meu_b2.get('finalistas') else []
@@ -362,7 +363,6 @@ else:
                                         novos_p_g[j['id']] = {"gols_casa": v_casa, "gols_fora": v_fora, "classificado": None}
                                         
                                         c4.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
-                                        # CORREÇÃO: Aplicado ID único para cada botão dentro do loop!
                                         if c4.form_submit_button("💾 Salvar só este", key=f"btn_salvar_ind_grp_{j['id']}", use_container_width=True):
                                             clicou_salvar = True
                                             
@@ -411,7 +411,6 @@ else:
                                 novos_p_m[j['id']] = {"gols_casa": v_casa, "gols_fora": v_fora, "classificado": v_classif}
                                 
                                 c_btn.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
-                                # CORREÇÃO: Aplicado ID único para cada botão dentro do loop!
                                 if c_btn.form_submit_button("💾 Salvar só este", key=f"btn_salvar_ind_mt_{j['id']}", use_container_width=True):
                                     clicou_mata = True
                                 st.divider()
