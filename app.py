@@ -245,6 +245,9 @@ elif st.session_state.bolao_ativo_id is None:
 # ECRÃ 3: DENTRO DO BOLÃO
 # ==========================================
 else:
+    # RELÓGIO GLOBAL DO SITE - UNIFICADO CONTRA NAMEERROR EM ABAS DE SUPORTE
+    agora = datetime.now(fuso_br)
+    
     nome_exibicao_sidebar = st.session_state.bolao_ativo_nome
     st.sidebar.title(f"🌍 {nome_exibicao_sidebar}")
     
@@ -275,7 +278,7 @@ else:
             
     menu = st.session_state.menu_atual
     
-    # --- 🛠️ BLINDAGEM CONTRA TABELA VAZIA (AUTO-REPOPULAR CONFIGS) ---
+    # --- BLINDAGEM CONTRA TABELA VAZIA (AUTO-REPOPULAR CONFIGS) ---
     config_res = supabase.table("configuracoes_copa").select("*").eq("id", 1).execute().data
     if not config_res:
         default_config = {"id": 1, "fase_ativa": "Fase de Grupos", "palpites_grupos_liberados": True, "palpites_matamata_liberados": False, "bonus_chave_liberado": False}
@@ -645,7 +648,7 @@ else:
                     if st.button("💾 Gravar Árvore do Mata-Mata Completa", use_container_width=True, type="primary"):
                         dados_chave = {
                             "oitavas": ",".join(vencedores_r32), "quartas": ",".join(vencedores_r16),
-                            "semis": ",".join(vencedores_s if 'vencedores_s' in locals() else vencedores_r8), "finalistas": ",".join(vencedores_r4),
+                            "semis": ",".join(vencedores_r8), "finalistas": ",".join(vencedores_r4),
                             "campeao": campeao_escolhido
                         }
                         if b2_salvo: supabase.table("bonus_chave").update(dados_chave).eq("email_usuario", st.session_state.email_usuario).execute()
@@ -793,7 +796,7 @@ else:
                         
             with adm_tab4:
                 st.subheader("🔮 Alerta: Previsões de Grupo Incompletas (Videntes)")
-                bonus1_dados = buscar_dados_paginados("bonus_grupos", "email_usuario, group" if 'group' in df_b1.columns if 'df_b1' in locals() else "email_usuario, grupo", "email_usuario", emails)
+                bonus1_dados = buscar_dados_paginados("bonus_grupos", "email_usuario, grupo", "email_usuario", emails)
                 df_b1 = pd.DataFrame(bonus1_dados) if bonus1_dados else pd.DataFrame(columns=['email_usuario', 'grupo'])
                 contagem_b1 = df_b1.groupby('email_usuario')['grupo'].count().to_dict() if not df_b1.empty else {}
                 
@@ -874,7 +877,7 @@ else:
                                     dt_comb_edit = datetime.combine(new_date, new_time)
                                     dt_fechamento_edit = fuso_br.localize(dt_comb_edit) - timedelta(minutes=30)
                                     supabase.table("jogos_copa").update({"horario_fechamento": dt_fechamento_edit.isoformat()}).eq("id", j['id']).execute()
-                                    st.success(f"Horário atualizado!")
+                                    st.success(f"Horário updated!")
                                     st.rerun()
                                 st.write("")
             else:
@@ -1006,7 +1009,7 @@ else:
                             supabase.table("gabarito_chave").update({regra["col"]: str_vencedores}).eq("id", 1).execute()
                         else:
                             supabase.table("gabarito_chave").insert(dados_g_chave).execute()
-                        st.success(f"Gabarito oficial da fase '{fase_gab_sel}' gravado e atualizado de ponta a ponta!"); st.rerun()
+                        st.success(f"Gabarito oficial da fase '{fase_gab_sel}' gravado e atualizado!"); st.rerun()
 
         with sa6:
             st.subheader("Travas e Configurações Master")
