@@ -240,14 +240,9 @@ else:
         if st.session_state.is_admin_bolao_ativo: menu_opcoes.append("⚙️ Admin do Grupo")
             
     if st.session_state.is_superadmin: menu_opcoes.append("👑 SUPER ADMIN GERAL")
-    menu = st.sidebar.selectbox("Navegação", menu_opcoes)
     
-    # --- 🛠️ INTERFACE DO SELETOR DE GRUPO NA BARRA LATERAL (UX CORRIGIDA) ---
-    grupo_sel = None
-    if menu in ["Fazer Palpites de Jogos", "Meus Palpites", "Palpites da Galera"] and st.session_state.bolao_ativo_id != "MASTER":
-        st.sidebar.markdown("---")
-        lista_todos_grupos = sorted(list(GRUPOS_COPA.keys()))
-        grupo_sel = st.sidebar.selectbox("🎯 Escolha o Grupo/Fase:", lista_todos_grupos)
+    # --- 🛠️ MENU LATERAL COMO LISTA DE OPÇÕES DIRETAS (RADIO BUTTONS) ---
+    menu = st.sidebar.radio("📌 Navegação", menu_opcoes)
     
     config_global = supabase.table("configuracoes_copa").select("*").eq("id", 1).execute().data[0]
     fase_ativa = config_global['fase_ativa']
@@ -297,41 +292,46 @@ else:
                     jogos_g = [j for j in jogos_abertos if not j.get('is_mata_mata')]
                     if not jogos_g: st.info("Nenhum jogo da fase de grupos aberto.")
                     else:
-                        with st.form(f"form_grupo_{grupo_sel}"):
-                            jogos_deste = [j for j in jogos_g if get_grupo(j['time_casa']) == grupo_sel]
-                            feitos = sum(1 for j in jogos_deste if str(j['id']) in mapa_meus)
-                            total = len(jogos_deste)
+                        grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_g if get_grupo(j['time_casa']) != "Mata-Mata")))
+                        if grupos_disponiveis:
+                            # COMBO DE GRUPOS FIXADO NA TELA PRINCIPAL
+                            grupo_sel = st.selectbox("🎯 Escolha o Grupo para visualizar/palpitar:", grupos_disponiveis, key="sb_grupo_palpites")
                             
-                            st.write(f"### Grupo {grupo_sel} — {feitos}/{total} palpites preenchidos")
-                            novos_p_g = {}
-                            
-                            if not jogos_deste:
-                                st.info(f"Todos os confrontos abertos do Grupo {grupo_sel} já foram respondidos ou trancados pelo horário.")
-                            else:
-                                for j in jogos_deste:
-                                    p_ant = mapa_meus.get(str(j['id']), {})
-                                    gc, gf = p_ant.get('gols_casa', 0), p_ant.get('gols_fora', 0)
-                                    
-                                    hf_br = converter_para_br(j['horario_fechamento'])
-                                    hj_br = hf_br + timedelta(minutes=30)
-                                    
-                                    st.write(f"**{j['time_casa']} x {j['time_fora']}**")
-                                    st.caption(f"📅 **Jogo:** {hj_br.strftime('%d/%m às %H:%M')} | 🔒 **Limite para chutar:** {hf_br.strftime('%H:%M')}")
-                                    
-                                    c1, c2, c3 = st.columns([3, 1, 3])
-                                    v_casa = c1.number_input(f"Gols {j['time_casa']}", min_value=0, step=1, value=gc, key=f"g_c_{j['id']}")
-                                    c2.markdown("<h3 style='text-align: center; padding-top: 25px;'>X</h3>", unsafe_allow_html=True)
-                                    v_fora = c3.number_input(f"Gols {j['time_fora']}", min_value=0, step=1, value=gf, key=f"g_f_{j['id']}")
-                                    novos_p_g[j['id']] = {"gols_casa": v_casa, "gols_fora": v_fora, "classificado": None}
-                                    st.write("---")
-                                    
-                                if st.form_submit_button(f"💾 Salvar Palpites do Grupo {grupo_sel}", use_container_width=True):
-                                    for id_j, dados in novos_p_g.items():
-                                        if str(id_j) in mapa_meus: supabase.table("palpites_copa").update(dados).eq("email_usuario", st.session_state.email_usuario).eq("id_jogo", id_j).execute()
-                                        else:
-                                            dados.update({"email_usuario": st.session_state.email_usuario, "id_jogo": id_j})
-                                            supabase.table("palpites_copa").insert(dados).execute()
-                                    st.success(f"Palpites do Grupo {grupo_sel} salvos com sucesso!"); st.rerun()
+                            with st.form(f"form_grupo_{grupo_sel}"):
+                                jogos_deste = [j for j in jogos_g if get_grupo(j['time_casa']) == grupo_sel]
+                                feitos = sum(1 for j in jogos_deste if str(j['id']) in mapa_meus)
+                                total = len(jogos_deste)
+                                
+                                st.write(f"### Grupo {grupo_sel} — {feitos}/{total} palpites preenchidos")
+                                novos_p_g = {}
+                                
+                                if not jogos_deste:
+                                    st.info(f"Todos os confrontos abertos do Grupo {grupo_sel} já foram respondidos ou trancados pelo horário.")
+                                else:
+                                    for j in jogos_deste:
+                                        p_ant = mapa_meus.get(str(j['id']), {})
+                                        gc, gf = p_ant.get('gols_casa', 0), p_ant.get('gols_fora', 0)
+                                        
+                                        hf_br = converter_para_br(j['horario_fechamento'])
+                                        hj_br = hf_br + timedelta(minutes=30)
+                                        
+                                        st.write(f"**{j['time_casa']} x {j['time_fora']}**")
+                                        st.caption(f"📅 **Jogo:** {hj_br.strftime('%d/%m às %H:%M')} | 🔒 **Limite para chutar:** {hf_br.strftime('%H:%M')}")
+                                        
+                                        c1, c2, c3 = st.columns([3, 1, 3])
+                                        v_casa = c1.number_input(f"Gols {j['time_casa']}", min_value=0, step=1, value=gc, key=f"g_c_{j['id']}")
+                                        c2.markdown("<h3 style='text-align: center; padding-top: 25px;'>X</h3>", unsafe_allow_html=True)
+                                        v_fora = c3.number_input(f"Gols {j['time_fora']}", min_value=0, step=1, value=gf, key=f"g_f_{j['id']}")
+                                        novos_p_g[j['id']] = {"gols_casa": v_casa, "gols_fora": v_fora, "classificado": None}
+                                        st.write("---")
+                                        
+                                    if st.form_submit_button(f"💾 Salvar Palpites do Grupo {grupo_sel}", use_container_width=True):
+                                        for id_j, dados in novos_p_g.items():
+                                            if str(id_j) in mapa_meus: supabase.table("palpites_copa").update(dados).eq("email_usuario", st.session_state.email_usuario).eq("id_jogo", id_j).execute()
+                                            else:
+                                                dados.update({"email_usuario": st.session_state.email_usuario, "id_jogo": id_j})
+                                                supabase.table("palpites_copa").insert(dados).execute()
+                                        st.success(f"Palpites do Grupo {grupo_sel} salvos com sucesso!"); st.rerun()
 
                 with aba_mata:
                     jogos_m = [j for j in jogos_abertos if j.get('is_mata_mata')]
@@ -378,43 +378,48 @@ else:
             mapa_meus = {str(p['id_jogo']): p for p in meus_p}
             
             jogos_validos = [j for j in jogos if j.get('times_confirmados')]
-            jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
+            grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_validos)))
             
-            total_pontos_grupo = 0
-            lista_jogos_processados = []
-            
-            for j in jogos_deste:
-                p = mapa_meus.get(str(j['id']))
-                pts_jogo = 0
-                if p and j.get('gols_casa_real') is not None:
-                    if j.get('is_mata_mata'):
-                        pts_jogo = calcular_pontos_matamata(p['gols_casa'], p['gols_fora'], p['classificado'], j['gols_casa_real'], j['gols_fora_real'], j['classificado_real'])
-                    else:
-                        pts_jogo = calcular_pontos_grupos(p['gols_casa'], p['gols_fora'], j['gols_casa_real'], j['gols_fora_real'])
-                total_pontos_grupo += pts_jogo
-                lista_jogos_processados.append((j, p, pts_jogo))
-            
-            st.metric(label=f"📊 Total de Pontos Conquistados no Grupo/Fase {grupo_sel}", value=f"{total_pontos_grupo} pts")
-            st.write("")
-            
-            if not lista_jogos_processados:
-                st.info(f"Nenhum confronto registrado para o Grupo {grupo_sel} nesta fase.")
-            else:
-                for j, p, pts_jogo in lista_jogos_processados:
-                    st.write(f"#### ⚽ {j['time_casa']} x {j['time_fora']}")
-                    if p:
-                        placar_txt = f"**Seu Palpite:** {p['gols_casa']} x {p['gols_fora']}"
-                        if j.get('is_mata_mata') and p.get('classificado'): placar_txt += f" | **Classifica:** {p['classificado']}"
-                        st.success(placar_txt)
-                    else: st.error("❌ Você não registrou palpite para este confronto!")
-                        
-                    if j.get('gols_casa_real') is not None:
-                        real_txt = f"**Resultado Oficial:** {j['gols_casa_real']} x {j['gols_fora_real']}"
-                        if j.get('is_mata_mata') and j.get('classificado_real'): real_txt += f" | **Classificou:** {j['classificado_real']}"
-                        st.info(real_txt)
-                        st.markdown(f"🔥 **Pontuação obtida neste jogo:** `+{pts_jogo} pontos` " + ("🟢" if pts_jogo > 0 else "🔴"))
-                    else: st.markdown("⏳ *Aguardando encerramento e resultado oficial do confronto.*")
-                    st.write("---")
+            if grupos_disponiveis:
+                # COMBO DE GRUPOS FIXADO NA TELA PRINCIPAL
+                grupo_sel = st.selectbox("🎯 Escolha o Grupo para conferir suas apostas:", grupos_disponiveis, key="sb_meus_grupos_view")
+                jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
+                
+                total_pontos_grupo = 0
+                lista_jogos_processados = []
+                
+                for j in jogos_deste:
+                    p = mapa_meus.get(str(j['id']))
+                    pts_jogo = 0
+                    if p and j.get('gols_casa_real') is not None:
+                        if j.get('is_mata_mata'):
+                            pts_jogo = calcular_pontos_matamata(p['gols_casa'], p['gols_fora'], p['classificado'], j['gols_casa_real'], j['gols_fora_real'], j['classificado_real'])
+                        else:
+                            pts_jogo = calcular_pontos_grupos(p['gols_casa'], p['gols_fora'], j['gols_casa_real'], j['gols_fora_real'])
+                    total_pontos_grupo += pts_jogo
+                    lista_jogos_processados.append((j, p, pts_jogo))
+                
+                st.metric(label=f"📊 Total de Pontos Conquistados no Grupo/Fase {grupo_sel}", value=f"{total_pontos_grupo} pts")
+                st.write("")
+                
+                if not lista_jogos_processados:
+                    st.info(f"Nenhum confronto registrado para o Grupo {grupo_sel} nesta fase.")
+                else:
+                    for j, p, pts_jogo in lista_jogos_processados:
+                        st.write(f"#### ⚽ {j['time_casa']} x {j['time_fora']}")
+                        if p:
+                            placar_txt = f"**Seu Palpite:** {p['gols_casa']} x {p['gols_fora']}"
+                            if j.get('is_mata_mata') and p.get('classificado'): placar_txt += f" | **Classifica:** {p['classificado']}"
+                            st.success(placar_txt)
+                        else: st.error("❌ Você não registrou palpite para este confronto!")
+                            
+                        if j.get('gols_casa_real') is not None:
+                            real_txt = f"**Resultado Oficial:** {j['gols_casa_real']} x {j['gols_fora_real']}"
+                            if j.get('is_mata_mata') and j.get('classificado_real'): real_txt += f" | **Classificou:** {j['classificado_real']}"
+                            st.info(real_txt)
+                            st.markdown(f"🔥 **Pontuação obtida neste jogo:** `+{pts_jogo} pontos` " + ("🟢" if pts_jogo > 0 else "🔴"))
+                        else: st.markdown("⏳ *Aguardando encerramento e resultado oficial do confronto.*")
+                        st.write("---")
 
     # --- 1C. ABA: PALPITES DA GALERA ---
     elif menu == "Palpites da Galera":
@@ -433,34 +438,39 @@ else:
                 jogos = ordenar_jogos(jogos_db)
                 agora = datetime.now(fuso_br)
                 jogos_validos = [j for j in jogos if j.get('times_confirmados')]
-                jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
+                grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_validos)))
                 
-                all_palpites = buscar_dados_paginados("palpites_copa", "*", "email_usuario", emails)
-                mapa_palpites = {(p['id_jogo'], p['email_usuario']): p for p in all_palpites}
-                
-                if not jogos_deste:
-                    st.info(f"Nenhum jogo pendente ou aberto para o Grupo {grupo_sel} nesta rodada.")
-                else:
-                    for j in jogos_deste:
-                        st.write(f"#### ⚽ {j['time_casa']} x {j['time_fora']}")
-                        hf_br = converter_para_br(j['horario_fechamento'])
-                        is_liberado = agora >= hf_br
-                        
-                        if is_liberado:
-                            rows_galera = []
-                            for em in emails:
-                                p = mapa_palpites.get((j['id'], em))
-                                if p:
-                                    placar_str = f"{p['gols_casa']} x {p['gols_fora']}"
-                                    if j.get('is_mata_mata') and p.get('classificado'): placar_str += f" ({p['classificado']})"
-                                else: placar_str = "Não palpitou"
-                                rows_galera.append({"Jogador": mapa_nomes.get(em, em), "Palpite Registrado": placar_str})
-                            st.dataframe(pd.DataFrame(rows_galera), use_container_width=True, hide_index=True)
-                        else:
-                            st.warning("🔒 Palpites ocultos. A tabela de apostas da galera será revelada automaticamente faltando 29 minutes para o início do jogo!")
-                        st.write("---")
+                if grupos_disponiveis:
+                    # COMBO DE GRUPOS FIXADO NA TELA PRINCIPAL
+                    grupo_sel = st.selectbox("🎯 Escolha o Grupo para espiar os rivais:", grupos_disponiveis, key="sb_galera_grupo_view")
+                    jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
+                    
+                    all_palpites = buscar_dados_paginados("palpites_copa", "*", "email_usuario", emails)
+                    mapa_palpites = {(p['id_jogo'], p['email_usuario']): p for p in all_palpites}
+                    
+                    if not jogos_deste:
+                        st.info(f"Nenhum jogo pendente ou aberto para o Grupo {grupo_sel} nesta rodada.")
+                    else:
+                        for j in jogos_deste:
+                            st.write(f"#### ⚽ {j['time_casa']} x {j['time_fora']}")
+                            hf_br = converter_para_br(j['horario_fechamento'])
+                            is_liberado = agora >= hf_br
+                            
+                            if is_liberado:
+                                rows_galera = []
+                                for em in emails:
+                                    p = mapa_palpites.get((j['id'], em))
+                                    if p:
+                                        placar_str = f"{p['gols_casa']} x {p['gols_fora']}"
+                                        if j.get('is_mata_mata') and p.get('classificado'): placar_str += f" ({p['classificado']})"
+                                    else: placar_str = "Não palpitou"
+                                    rows_galera.append({"Jogador": mapa_nomes.get(em, em), "Palpite Registrado": placar_str})
+                                st.dataframe(pd.DataFrame(rows_galera), use_container_width=True, hide_index=True)
+                            else:
+                                st.warning("🔒 Palpites ocultos. A tabela de apostas da galera será revelada automaticamente faltando 29 minutos para o início do jogo!")
+                            st.write("---")
 
-    # --- 2. BÔNUS 1: GRUPOS (COM FILTRAGEM DINÂMICA EM CASCATA - ANTI-DUPLICAÇÃO) ---
+    # --- 2. BÔNUS 1: GRUPOS (COM FILTRAGEM DINÂMICA EM CASCATA) ---
     elif menu == "Bônus 1: Videntes dos Grupos":
         st.title("🔮 Videntes da Fase de Grupos")
         st.caption("Monte a sua classificação definitiva. Ao escolher uma seleção, ela será automaticamente filtrada das posições seguintes.")
@@ -475,25 +485,21 @@ else:
                 b_ant = mapa_b.get(grp, {})
                 c1, c2, c3, c4 = st.columns(4) 
                 
-                # 1º Lugar - Todos os times disponíveis
                 opcoes_1 = times
                 val_1 = b_ant.get('pos1')
                 idx_1 = opcoes_1.index(val_1) if val_1 in opcoes_1 else 0
                 pos1 = c1.selectbox("1º Lugar", opcoes_1, index=idx_1, key=f"g{grp}_1")
                 
-                # 2º Lugar - Remove o escolhido no 1º
                 opcoes_2 = [t for t in times if t != pos1]
                 val_2 = b_ant.get('pos2')
                 idx_2 = opcoes_2.index(val_2) if val_2 in opcoes_2 else 0
                 pos2 = c2.selectbox("2º Lugar", opcoes_2, index=idx_2, key=f"g{grp}_2")
                 
-                # 3º Lugar - Remove os escolhidos no 1º e 2º
                 opcoes_3 = [t for t in times if t != pos1 and t != pos2]
                 val_3 = b_ant.get('pos3')
                 idx_3 = opcoes_3.index(val_3) if val_3 in opcoes_3 else 0
                 pos3 = c3.selectbox("3º Lugar", opcoes_3, index=idx_3, key=f"g{grp}_3")
                 
-                # 4º Lugar - Resta apenas a última seleção restante
                 opcoes_4 = [t for t in times if t != pos1 and t != pos2 and t != pos3]
                 val_4 = b_ant.get('pos4')
                 idx_4 = opcoes_4.index(val_4) if val_4 in opcoes_4 else 0
@@ -509,7 +515,7 @@ else:
                     else: supabase.table("bonus_grupos").insert(dados).execute()
                 st.success("Previsões dos grupos gravadas sem duplicidades!")
 
-    # --- 3. BÔNUS 2: CHAVE FINAL (SIMULADOR DE BRACKET SEQUENCIAL BASEADO EM ID) ---
+    # --- 3. BÔNUS 2: CHAVE FINAL ---
     elif menu == "Bônus 2: Chave Final":
         st.title("🛤️ Caminho para a Glória — Simulador do Mata-Mata")
         
@@ -772,7 +778,7 @@ else:
                     dados_g_chave = {"id": 1, "oitavas": ",".join(oit), "quartas": ",".join(qua), "semis": ",".join(sem), "finalistas": ",".join(fin), "campeao": camp}
                     if gab_c_db: supabase.table("gabarito_chave").update(dados_g_chave).eq("id", 1).execute()
                     else: supabase.table("gabarito_chave").insert(dados_g_chave).execute()
-                    st.success("Gabarito da Chave atualizado!")
+                    st.success("Gabarito da Chave updated!")
                     
         with sa6:
             st.subheader("Travas e Configurações Master")
