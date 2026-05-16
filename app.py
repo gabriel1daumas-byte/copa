@@ -196,12 +196,12 @@ if not st.session_state.logado:
                     u = res.data[0]
                     if u.get("senha"): st.warning("Este e-mail já possui conta activa. Use a aba de Login.")
                     else:
-                        supabase.table("usuarios").update({"senha": senha_cad, "nome": name_cad}).eq("email", email_cad).execute()
+                        supabase.table("usuarios").update({"senha": senha_cad, "nome": nome_cad}).eq("email", email_cad).execute()
                         st.success("Sua conta foi ativada com sucesso!")
                         st.session_state.update(logado=True, email_usuario=email_cad, nome_usuario=nome_cad, is_superadmin=u.get('is_superadmin', False))
                         st.rerun()
                 else:
-                    supabase.table("usuarios").insert({"email": email_cad, "nome": name_cad, "senha": senha_cad}).execute()
+                    supabase.table("usuarios").insert({"email": email_cad, "nome": nome_cad, "senha": senha_cad}).execute()
                     st.success("Conta criada com sucesso!")
                     st.session_state.update(logado=True, email_usuario=email_cad, nome_usuario=nome_cad, is_superadmin=False)
                     st.rerun()
@@ -245,9 +245,6 @@ elif st.session_state.bolao_ativo_id is None:
 # ECRÃ 3: DENTRO DO BOLÃO
 # ==========================================
 else:
-    # RELÓGIO GLOBAL DO SITE - UNIFICADO CONTRA NAMEERROR EM ABAS DE SUPORTE
-    agora = datetime.now(fuso_br)
-    
     nome_exibicao_sidebar = st.session_state.bolao_ativo_nome
     st.sidebar.title(f"🌍 {nome_exibicao_sidebar}")
     
@@ -278,7 +275,15 @@ else:
             
     menu = st.session_state.menu_atual
     
-    config_global = supabase.table("configuracoes_copa").select("*").eq("id", 1).execute().data[0]
+    # --- 🛠️ BLINDAGEM CONTRA TABELA VAZIA (AUTO-REPOPULAR CONFIGS) ---
+    config_res = supabase.table("configuracoes_copa").select("*").eq("id", 1).execute().data
+    if not config_res:
+        default_config = {"id": 1, "fase_ativa": "Fase de Grupos", "palpites_grupos_liberados": True, "palpites_matamata_liberados": False, "bonus_chave_liberado": False}
+        supabase.table("configuracoes_copa").insert(default_config).execute()
+        config_global = default_config
+    else:
+        config_global = config_res[0]
+        
     fase_ativa = config_global['fase_ativa']
     liberado_grupos = config_global.get('palpites_grupos_liberados', True)
     liberado_mata = config_global.get('palpites_matamata_liberados', False)
@@ -625,7 +630,7 @@ else:
                         opcoes = [t1, t2]
                         pos_lista = i // 2
                         idx_p = opcoes.index(sel_fin[pos_lista]) if pos_lista < len(sel_fin) and sel_fin[pos_lista] in opcoes else 0
-                        venc = st.selectbox(f"Semi {pos_lista+1}: {t1} x {t2}", opc if 'opc' in locals() else opcoes, index=idx_p, key=f"b2_r4_{i}", disabled=status_trava_componente)
+                        venc = st.selectbox(f"Semi {pos_lista+1}: {t1} x {t2}", opcoes, index=idx_p, key=f"b2_r4_{i}", disabled=status_trava_componente)
                         vencedores_r4.append(venc)
 
                 st.write("---")
@@ -640,7 +645,7 @@ else:
                     if st.button("💾 Gravar Árvore do Mata-Mata Completa", use_container_width=True, type="primary"):
                         dados_chave = {
                             "oitavas": ",".join(vencedores_r32), "quartas": ",".join(vencedores_r16),
-                            "semis": ",".join(vencedores_r4 if 'vencedores_r4' in locals() else vencedores_r8), "finalistas": ",".join(vencedores_r4),
+                            "semis": ",".join(vencedores_s if 'vencedores_s' in locals() else vencedores_r8), "finalistas": ",".join(vencedores_r4),
                             "campeao": campeao_escolhido
                         }
                         if b2_salvo: supabase.table("bonus_chave").update(dados_chave).eq("email_usuario", st.session_state.email_usuario).execute()
@@ -788,7 +793,7 @@ else:
                         
             with adm_tab4:
                 st.subheader("🔮 Alerta: Previsões de Grupo Incompletas (Videntes)")
-                bonus1_dados = buscar_dados_paginados("bonus_grupos", "email_usuario, grupo", "email_usuario", emails)
+                bonus1_dados = buscar_dados_paginados("bonus_grupos", "email_usuario, group" if 'group' in df_b1.columns if 'df_b1' in locals() else "email_usuario, grupo", "email_usuario", emails)
                 df_b1 = pd.DataFrame(bonus1_dados) if bonus1_dados else pd.DataFrame(columns=['email_usuario', 'grupo'])
                 contagem_b1 = df_b1.groupby('email_usuario')['grupo'].count().to_dict() if not df_b1.empty else {}
                 
@@ -960,7 +965,6 @@ else:
                         else: supabase.table("gabarito_grupos").insert(dados).execute()
                     st.success("Gabaritos oficiais dos grupos gravados com sucesso!")
 
-        # --- 🛠️ REESTRUTURAÇÃO COMPLETA DA ABA 5: GABARITO DA CHAVE POR FASE REAL ---
         with sa5:
             st.subheader("Tracks: Gabarito Oficial da Chave Eliminatória")
             st.caption("Selecione a fase para definir os classificados reais com base nos confrontos salvos no banco de dados.")
