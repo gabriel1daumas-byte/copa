@@ -201,7 +201,6 @@ if not st.session_state.logado:
                         st.session_state.update(logado=True, email_usuario=email_cad, nome_usuario=nome_cad, is_superadmin=u.get('is_superadmin', False))
                         st.rerun()
                 else:
-                    # CORREÇÃO: Impede a inserção de usuários não autorizados
                     st.error("⚠️ Seu e-mail não possui um pré-cadastro ativo no sistema. Peça ao Administrador da sua liga corporativa para lhe autorizar antes de criar a conta!")
 
 # ==========================================
@@ -276,7 +275,6 @@ else:
             
     menu = st.session_state.menu_atual
     
-    # --- BLINDAGEM CONTRA TABELA VAZIA (AUTO-REPOPULAR CONFIGS) ---
     config_res = supabase.table("configuracoes_copa").select("*").eq("id", 1).execute().data
     if not config_res:
         default_config = {"id": 1, "fase_ativa": "Fase de Grupos", "palpites_grupos_liberados": True, "palpites_matamata_liberados": False, "bonus_chave_liberado": False}
@@ -510,7 +508,6 @@ else:
         st.title("🔮 Videntes da Fase de Grupos")
         st.caption("Monte a sua classificação. Se escolher uma seleção que já está em outra posição, o sistema inverterá as duas posições automaticamente!")
         
-        # LÓGICA DE TRAVA: Impede edição após o início do primeiro jogo da Copa
         jogos_grupos_b1 = buscar_dados_paginados("jogos_copa", "horario_fechamento", "fase", "Fase de Grupos")
         passou_do_prazo_b1 = False
         
@@ -728,109 +725,126 @@ else:
         membros = buscar_dados_paginados("membros_bolao", "email_usuario", "id_bolao", st.session_state.bolao_ativo_id)
         emails = [m['email_usuario'].lower() for m in membros]
         
-        if not emails:
-            st.info("Nenhum participante associado a esta liga corporativa ainda.")
-        else:
-            usuarios_dados = buscar_dados_paginados("usuarios", "email, nome", "email", emails)
-            all_jogos_adm = buscar_dados_paginados("jogos_copa", "*")
-            
-            adm_tab1, adm_tab2, adm_tab3, adm_tab4 = st.tabs([
-                "➕ Autorizar Jogador", "📅 Partidas do Dia", "⏳ Pendentes (Próximos 2 Dias)", "🔮 Pendentes (Videntes)"
-            ])
-            
-            with adm_tab1:
-                st.subheader("Pré-autorizar Jogadores na Liga")
-                with st.form("form_add_email_liga"):
-                    novo_email = st.text_input("E-mail corporativo do participante").lower().strip()
-                    if st.form_submit_button("Autorizar na Liga", use_container_width=True):
-                        if novo_email:
+        usuarios_dados = buscar_dados_paginados("usuarios", "email, nome", "email", emails) if emails else []
+        all_jogos_adm = buscar_dados_paginados("jogos_copa", "*")
+        
+        adm_tab1, adm_tab2, adm_tab3, adm_tab4 = st.tabs([
+            "➕ Autorizar Jogador", "📅 Partidas do Dia", "⏳ Pendentes (Próximos 2 Dias)", "🔮 Pendentes (Videntes)"
+        ])
+        
+        # --- TAB 1: CONVITES BLINDADOS COM LISTA DE MEMBROS ---
+        with adm_tab1:
+            st.subheader("Pré-autorizar Jogadores na Liga")
+            with st.form("form_add_email_liga"):
+                novo_email = st.text_input("E-mail corporativo do participante").lower().strip()
+                if st.form_submit_button("Autorizar na Liga", use_container_width=True):
+                    if novo_email:
+                        # Trava contra convites duplicados
+                        if not supabase.table("membros_bolao").select("*").eq("id_bolao", st.session_state.bolao_ativo_id).eq("email_usuario", novo_email).execute().data:
                             if not supabase.table("usuarios").select("email").eq("email", novo_email).execute().data:
                                 supabase.table("usuarios").insert({"email": novo_email, "nome": "Aguardando..."}).execute()
-                            if not supabase.table("membros_bolao").select("*").eq("id_bolao", st.session_state.bolao_ativo_id).eq("email_usuario", novo_email).execute().data:
-                                supabase.table("membros_bolao").insert({"id_bolao": st.session_state.bolao_ativo_id, "email_usuario": novo_email, "is_admin": False}).execute()
-                                st.success(f"O usuário '{novo_email}' foi autorizado nesta liga com sucesso!"); st.rerun()
-                                
-            with adm_tab2:
-                st.subheader("📅 Cronograma de Partidas de Hoje")
-                jogos_hoje = []
-                for j in all_jogos_adm:
-                    if j.get('times_confirmados') and j.get('horario_fechamento'):
-                        dt_jogo = converter_para_br(j['horario_fechamento']) + timedelta(minutes=30)
-                        if dt_jogo.date() == agora.date(): jogos_hoje.append(j)
-                            
-                if not jogos_hoje: st.info("Nenhum confronto oficial agendado para a data de hoje.")
-                else:
-                    for j in ordenar_jogos(jogos_hoje):
-                        hf_br = converter_para_br(j['horario_fechamento'])
-                        hj_br = hf_br + timedelta(minutes=30)
-                        status_placar = f"| Placar Real: **{j['gols_casa_real']} x {j['gols_fora_real']}**" if j.get('gols_casa_real') is not None else "| ⏳ Em andamento / Aguardando placar"
-                        st.write(f"⚽ **{j['time_casa']} x {j['time_fora']}** — *({j['fase']})*")
-                        st.caption(f"⏰ Horário da Partida: {hj_br.strftime('%H:%M')} {status_placar}")
-                        st.write("---")
-                        
-            with adm_tab3:
-                st.subheader("⏳ Alerta: Palpites Pendentes para os Próximos 2 Dias")
-                limite_2_dias = agora + timedelta(days=2)
-                jogos_proximos = [j for j in all_jogos_adm if j.get('times_confirmados') and j.get('horario_fechamento') and agora <= converter_para_br(j['horario_fechamento']) <= limite_2_dias]
+                            supabase.table("membros_bolao").insert({"id_bolao": st.session_state.bolao_ativo_id, "email_usuario": novo_email, "is_admin": False}).execute()
+                            st.success(f"✅ O usuário '{novo_email}' foi autorizado nesta liga com sucesso!")
+                            st.rerun()
+                        else:
+                            st.warning(f"⚠️ O e-mail '{novo_email}' já está autorizado nesta liga!")
+
+            st.write("---")
+            st.write("#### 👥 Jogadores Autorizados")
+            if not emails:
+                st.info("Você é o primeiro e único membro desta liga por enquanto.")
+            else:
+                lista_jogadores = []
+                mapa_nomes_adm = {u['email']: u['nome'] for u in usuarios_dados}
+                for em in emails:
+                    nome_jogador = mapa_nomes_adm.get(em, "Desconhecido")
+                    status = "⏳ Aguardando Cadastro" if nome_jogador == "Aguardando..." else "✅ Ativo"
+                    lista_jogadores.append({"E-mail": em, "Nome": nome_jogador, "Status": status})
                 
-                if not jogos_proximos: st.success("🎉 Não há nenhum jogo agendado ou com mercado aberto para as próximas 48 horas!")
-                else:
-                    ids_proximos = [j['id'] for j in jogos_proximos]
-                    palpites_proximos = buscar_dados_paginados("palpites_copa", "*", "id_jogo", ids_proximos)
-                    palpites_feitos = {(p['email_usuario'].lower(), p['id_jogo']) for p in palpites_proximos}
+                if lista_jogadores:
+                    st.dataframe(pd.DataFrame(lista_jogadores), use_container_width=True, hide_index=True)
+                            
+        with adm_tab2:
+            st.subheader("📅 Cronograma de Partidas de Hoje")
+            jogos_hoje = []
+            for j in all_jogos_adm:
+                if j.get('times_confirmados') and j.get('horario_fechamento'):
+                    dt_jogo = converter_para_br(j['horario_fechamento']) + timedelta(minutes=30)
+                    if dt_jogo.date() == agora.date(): jogos_hoje.append(j)
+                        
+            if not jogos_hoje: st.info("Nenhum confronto oficial agendado para a data de hoje.")
+            else:
+                for j in ordenar_jogos(jogos_hoje):
+                    hf_br = converter_para_br(j['horario_fechamento'])
+                    hj_br = hf_br + timedelta(minutes=30)
+                    status_placar = f"| Placar Real: **{j['gols_casa_real']} x {j['gols_fora_real']}**" if j.get('gols_casa_real') is not None else "| ⏳ Em andamento / Aguardando placar"
+                    st.write(f"⚽ **{j['time_casa']} x {j['time_fora']}** — *({j['fase']})*")
+                    st.caption(f"⏰ Horário da Partida: {hj_br.strftime('%H:%M')} {status_placar}")
+                    st.write("---")
                     
-                    proximos_faltando = []
-                    for u in usuarios_dados:
-                        u_email = u['email'].lower()
-                        if u['nome'] == "Aguardando...": continue
-                        jogos_esquecidos = []
-                        for j in jogos_proximos:
-                            if (u_email, j['id']) not in palpites_feitos: 
-                                games_txt = f"{j['time_casa']} x {j['time_fora']}"
-                                jogos_esquecidos.append(games_txt)
-                                
-                        if jogos_esquecidos:
-                            proximos_faltando.append({"Jogador": u['nome'], "E-mail": u_email, "Confrontos Esquecidos": ", ".join(jogos_esquecidos)})
-                            
-                    if not proximos_faltando: st.success("🔥 Espetacular! Todos os participantes estão em dia com as próximas 48 horas!")
-                    else:
-                        st.dataframe(pd.DataFrame(proximos_faltando), use_container_width=True, hide_index=True)
-                        
-                        txt_wa_jogos = "🚨 *AVISO DO BOLÃO - JOGOS PRÓXIMOS SEM PALPITE* 🚨\n\nGalera, faltam menos de 48h para as rodadas abaixo e tem gente esquecendo de chutar! Confiram a lista de pendências:\n\n"
-                        for p in proximos_faltando:
-                            txt_wa_jogos += f"👤 *{p['Jogador']}*\n❌ Faltam: {p['Confrontos Esquecidos']}\n\n"
-                        txt_wa_jogos += "🏃‍♂️ Corram lá no app para não perder os prazos!"
-                        
-                        st.write("### 💬 Cobrança Rápida (WhatsApp)")
-                        st.code(txt_wa_jogos, language="markdown")
-                        st.link_button("🚀 Enviar Notificação via WhatsApp", url=f"https://wa.me/?text={urllib.parse.quote(txt_wa_jogos)}", use_container_width=True)
-                        
-            with adm_tab4:
-                st.subheader("🔮 Alerta: Previsões de Grupo Incompletas (Videntes)")
-                bonus1_dados = buscar_dados_paginados("bonus_grupos", "email_usuario, grupo", "email_usuario", emails)
-                df_b1 = pd.DataFrame(bonus1_dados) if bonus1_dados else pd.DataFrame(columns=['email_usuario', 'grupo'])
-                contagem_b1 = df_b1.groupby('email_usuario')['grupo'].count().to_dict() if not df_b1.empty else {}
+        with adm_tab3:
+            st.subheader("⏳ Alerta: Palpites Pendentes para os Próximos 2 Dias")
+            limite_2_dias = agora + timedelta(days=2)
+            jogos_proximos = [j for j in all_jogos_adm if j.get('times_confirmados') and j.get('horario_fechamento') and agora <= converter_para_br(j['horario_fechamento']) <= limite_2_dias]
+            
+            if not jogos_proximos: st.success("🎉 Não há nenhum jogo agendado ou com mercado aberto para as próximas 48 horas!")
+            else:
+                ids_proximos = [j['id'] for j in jogos_proximos]
+                palpites_proximos = buscar_dados_paginados("palpites_copa", "*", "id_jogo", ids_proximos)
+                palpites_feitos = {(p['email_usuario'].lower(), p['id_jogo']) for p in palpites_proximos}
                 
-                bonus1_faltando = []
+                proximos_faltando = []
                 for u in usuarios_dados:
                     u_email = u['email'].lower()
                     if u['nome'] == "Aguardando...": continue
-                    grupos_feitos = contagem_b1.get(u_email, 0)
-                    if grupos_feitos < 12:
-                        bonus1_faltando.append({"Jogador": u['nome'], "E-mail": u_email, "Progresso dos Grupos": f"{grupos_feitos} de 12 preenchidos"})
+                    jogos_esquecidos = []
+                    for j in jogos_proximos:
+                        if (u_email, j['id']) not in palpites_feitos: 
+                            games_txt = f"{j['time_casa']} x {j['time_fora']}"
+                            jogos_esquecidos.append(games_txt)
+                            
+                    if jogos_esquecidos:
+                        proximos_faltando.append({"Jogador": u['nome'], "E-mail": u_email, "Confrontos Esquecidos": ", ".join(jogos_esquecidos)})
                         
-                if not bonus1_faltando: st.success("🥇 Perfeito! Absolutamente todos finalizaram as previsões dos videntes!")
+                if not proximos_faltando: st.success("🔥 Espetacular! Todos os participantes estão em dia com as próximas 48 horas!")
                 else:
-                    st.dataframe(pd.DataFrame(bonus1_faltando), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(proximos_faltando), use_container_width=True, hide_index=True)
                     
-                    txt_wa_vid = "🔮 *ALERTA DOS VIDENTES - CLASSIFICAÇÃO DOS GRUPOS* 🔮\n\nFalta salvar a previsão completa dos 12 grupos do Bolão da Copa! Segue a lista de quem está incompleto:\n\n"
-                    for p in bonus1_faltando:
-                        txt_wa_vid += f"👤 *{p['Jogador']}* -> ({p['Progresso dos Grupos']})\n"
-                    txt_wa_vid += "\n⚠️ Salvem antes do início oficial da Copa para pontuar!"
+                    txt_wa_jogos = "🚨 *AVISO DO BOLÃO - JOGOS PRÓXIMOS SEM PALPITE* 🚨\n\nGalera, faltam menos de 48h para as rodadas abaixo e tem gente esquecendo de chutar! Confiram a lista de pendências:\n\n"
+                    for p in proximos_faltando:
+                        txt_wa_jogos += f"👤 *{p['Jogador']}*\n❌ Faltam: {p['Confrontos Esquecidos']}\n\n"
+                    txt_wa_jogos += "🏃‍♂️ Corram lá no app para não perder os prazos!"
                     
                     st.write("### 💬 Cobrança Rápida (WhatsApp)")
-                    st.code(txt_wa_vid, language="markdown")
-                    st.link_button("🚀 Enviar Notificação via WhatsApp", url=f"https://wa.me/?text={urllib.parse.quote(txt_wa_vid)}", use_container_width=True)
+                    st.code(txt_wa_jogos, language="markdown")
+                    st.link_button("🚀 Enviar Notificação via WhatsApp", url=f"https://wa.me/?text={urllib.parse.quote(txt_wa_jogos)}", use_container_width=True)
+                    
+        with adm_tab4:
+            st.subheader("🔮 Alerta: Previsões de Grupo Incompletas (Videntes)")
+            bonus1_dados = buscar_dados_paginados("bonus_grupos", "email_usuario, grupo", "email_usuario", emails)
+            df_b1 = pd.DataFrame(bonus1_dados) if bonus1_dados else pd.DataFrame(columns=['email_usuario', 'grupo'])
+            contagem_b1 = df_b1.groupby('email_usuario')['grupo'].count().to_dict() if not df_b1.empty else {}
+            
+            bonus1_faltando = []
+            for u in usuarios_dados:
+                u_email = u['email'].lower()
+                if u['nome'] == "Aguardando...": continue
+                grupos_feitos = contagem_b1.get(u_email, 0)
+                if grupos_feitos < 12:
+                    bonus1_faltando.append({"Jogador": u['nome'], "E-mail": u_email, "Progresso dos Grupos": f"{grupos_feitos} de 12 preenchidos"})
+                    
+            if not bonus1_faltando: st.success("🥇 Perfeito! Absolutamente todos finalizaram as previsões dos videntes!")
+            else:
+                st.dataframe(pd.DataFrame(bonus1_faltando), use_container_width=True, hide_index=True)
+                
+                txt_wa_vid = "🔮 *ALERTA DOS VIDENTES - CLASSIFICAÇÃO DOS GRUPOS* 🔮\n\nFalta salvar a previsão completa dos 12 grupos do Bolão da Copa! Segue a lista de quem está incompleto:\n\n"
+                for p in bonus1_faltando:
+                    txt_wa_vid += f"👤 *{p['Jogador']}* -> ({p['Progresso dos Grupos']})\n"
+                txt_wa_vid += "\n⚠️ Salvem antes do início oficial da Copa para pontuar!"
+                
+                st.write("### 💬 Cobrança Rápida (WhatsApp)")
+                st.code(txt_wa_vid, language="markdown")
+                st.link_button("🚀 Enviar Notificação via WhatsApp", url=f"https://wa.me/?text={urllib.parse.quote(txt_wa_vid)}", use_container_width=True)
 
     # --- 6. 👑 CÉLULA MASTER: SUPER ADMIN GERAL ---
     elif menu == "👑 SUPER ADMIN GERAL":
