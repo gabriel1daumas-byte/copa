@@ -74,6 +74,24 @@ def buscar_dados_paginados(tabela, colunas="*", filtro_col=None, filtro_val=None
         inicio += tamanho_lote
     return dados
 
+# --- CALLBACK DE TROCA INTELIGENTE (SWAP) PARA O BÔNUS 1 ---
+def check_swap(grp, pos_idx):
+    key_changed = f"sb_g{grp}_{pos_idx}"
+    new_val = st.session_state[key_changed]
+    current_list = st.session_state[f"arr_{grp}"]
+    old_val = current_list[pos_idx]
+    
+    if new_val == old_val:
+        return
+        
+    if new_val in current_list:
+        other_idx = current_list.index(new_val)
+        current_list[other_idx] = old_val
+        st.session_state[f"sb_g{grp}_{other_idx}"] = old_val
+        
+    current_list[pos_idx] = new_val
+    st.session_state[f"arr_{grp}"] = current_list
+
 # --- FÓRMULAS DE PONTUAÇÃO ---
 def calcular_pontos_grupos(p_c, p_f, r_c, r_f):
     if pd.isna(r_c) or pd.isna(r_f) or pd.isna(p_c) or pd.isna(p_f): return 0
@@ -139,7 +157,7 @@ def calcular_pontos_bonus2(meu_b2, gab_b2):
 
 # --- SESSÃO ---
 if "logado" not in st.session_state:
-    st.session_state.update(logado=False, email_usuario="", nome_usuario="", is_superadmin=False, bolao_ativo_id=None, bolao_ativo_nome=None, is_admin_bolao_ativo=False)
+    st.session_state.update(logado=False, email_usuario="", nome_usuario="", is_superadmin=False, bolao_ativo_id=None, bolao_ativo_nome=None, is_admin_bolao_ativo=False, menu_atual="")
 
 # ==========================================
 # ECRÃ 1: LOGIN E CADASTRO SEGREGADOS
@@ -230,7 +248,7 @@ else:
     st.sidebar.title(f"🌍 {nome_exibicao_sidebar}")
     
     if st.sidebar.button("🏠 Voltar ao Lobby de Grupos", use_container_width=True):
-        st.session_state.update(bolao_ativo_id=None, bolao_ativo_nome=None, is_admin_bolao_ativo=False)
+        st.session_state.update(bolao_ativo_id=None, bolao_ativo_nome=None, is_admin_bolao_ativo=False, menu_atual="")
         st.rerun()
         
     st.sidebar.divider()
@@ -241,8 +259,26 @@ else:
             
     if st.session_state.is_superadmin: menu_opcoes.append("👑 SUPER ADMIN GERAL")
     
-    # --- 🛠️ MENU LATERAL COMO LISTA DE OPÇÕES DIRETAS (RADIO BUTTONS) ---
-    menu = st.sidebar.radio("📌 Navegação", menu_opcoes)
+    # --- 🛠️ ENGENHARIA DE BOTÕES DE NAVEGAÇÃO LATERAIS DINÂMICOS ---
+    if not st.session_state.menu_atual or st.session_state.menu_atual not in menu_opcoes:
+        st.session_state.menu_atual = menu_opcoes[0]
+
+    st.sidebar.markdown("**📌 Navegação**")
+    for opcao in menu_opcoes:
+        is_active = st.session_state.menu_atual == opcao
+        label_btn = f"🎯 {opcao}" if is_active else opcao
+        type_btn = "primary" if is_active else "secondary"
+        
+        if st.sidebar.button(label_btn, key=f"nav_btn_{opcao}", use_container_width=True, type=type_btn):
+            st.session_state.menu_atual = opcao
+            st.rerun()
+            
+    menu = st.session_state.menu_atual
+    
+    # --- INTERFACE EXCLUSIVA DO SELETOR DE GRUPO NA TELA PRINCIPAL ---
+    grupo_sel = None
+    if menu in ["Fazer Palpites de Jogos", "Meus Palpites", "Palpites da Galera"] and st.session_state.bolao_ativo_id != "MASTER":
+        lista_todos_grupos = sorted(list(GRUPOS_COPA.keys()))
     
     config_global = supabase.table("configuracoes_copa").select("*").eq("id", 1).execute().data[0]
     fase_ativa = config_global['fase_ativa']
@@ -294,7 +330,7 @@ else:
                     else:
                         grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_g if get_grupo(j['time_casa']) != "Mata-Mata")))
                         if grupos_disponiveis:
-                            # COMBO DE GRUPOS FIXADO NA TELA PRINCIPAL
+                            # SELETOR DE GRUPO CENTRALIZADO NA TELA PRINCIPAL
                             grupo_sel = st.selectbox("🎯 Escolha o Grupo para visualizar/palpitar:", grupos_disponiveis, key="sb_grupo_palpites")
                             
                             with st.form(f"form_grupo_{grupo_sel}"):
@@ -381,7 +417,7 @@ else:
             grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_validos)))
             
             if grupos_disponiveis:
-                # COMBO DE GRUPOS FIXADO NA TELA PRINCIPAL
+                # SELETOR DE GRUPO CENTRALIZADO NA TELA PRINCIPAL
                 grupo_sel = st.selectbox("🎯 Escolha o Grupo para conferir suas apostas:", grupos_disponiveis, key="sb_meus_grupos_view")
                 jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
                 
@@ -441,7 +477,7 @@ else:
                 grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_validos)))
                 
                 if grupos_disponiveis:
-                    # COMBO DE GRUPOS FIXADO NA TELA PRINCIPAL
+                    # SELETOR DE GRUPO CENTRALIZADO NA TELA PRINCIPAL
                     grupo_sel = st.selectbox("🎯 Escolha o Grupo para espiar os rivais:", grupos_disponiveis, key="sb_galera_grupo_view")
                     jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
                     
@@ -470,50 +506,46 @@ else:
                                 st.warning("🔒 Palpites ocultos. A tabela de apostas da galera será revelada automaticamente faltando 29 minutos para o início do jogo!")
                             st.write("---")
 
-    # --- 2. BÔNUS 1: GRUPOS (COM FILTRAGEM DINÂMICA EM CASCATA) ---
+    # --- 2. BÔNUS 1: VIDENTES COM SWAP DINÂMICO (CLASSIFICAÇÃO INTELIGENTE) ---
     elif menu == "Bônus 1: Videntes dos Grupos":
         st.title("🔮 Videntes da Fase de Grupos")
-        st.caption("Monte a sua classificação definitiva. Ao escolher uma seleção, ela será automaticamente filtrada das posições seguintes.")
+        st.caption("Monte a sua classificação. Se escolher uma seleção que já está em outra posição, o sistema inverterá as duas posições automaticamente!")
         
         existentes = buscar_dados_paginados("bonus_grupos", "*", "email_usuario", st.session_state.email_usuario)
         mapa_b = {b['grupo']: b for b in existentes}
         
-        with st.form("form_bonus_g"):
-            respostas = {}
-            for grp, times in GRUPOS_COPA.items():
-                st.subheader(f"Grupo {grp}")
+        for grp, times in GRUPOS_COPA.items():
+            if f"arr_{grp}" not in st.session_state:
                 b_ant = mapa_b.get(grp, {})
-                c1, c2, c3, c4 = st.columns(4) 
-                
-                opcoes_1 = times
-                val_1 = b_ant.get('pos1')
-                idx_1 = opcoes_1.index(val_1) if val_1 in opcoes_1 else 0
-                pos1 = c1.selectbox("1º Lugar", opcoes_1, index=idx_1, key=f"g{grp}_1")
-                
-                opcoes_2 = [t for t in times if t != pos1]
-                val_2 = b_ant.get('pos2')
-                idx_2 = opcoes_2.index(val_2) if val_2 in opcoes_2 else 0
-                pos2 = c2.selectbox("2º Lugar", opcoes_2, index=idx_2, key=f"g{grp}_2")
-                
-                opcoes_3 = [t for t in times if t != pos1 and t != pos2]
-                val_3 = b_ant.get('pos3')
-                idx_3 = opcoes_3.index(val_3) if val_3 in opcoes_3 else 0
-                pos3 = c3.selectbox("3º Lugar", opcoes_3, index=idx_3, key=f"g{grp}_3")
-                
-                opcoes_4 = [t for t in times if t != pos1 and t != pos2 and t != pos3]
-                val_4 = b_ant.get('pos4')
-                idx_4 = opcoes_4.index(val_4) if val_4 in opcoes_4 else 0
-                pos4 = c4.selectbox("4º Lugar", opcoes_4, index=idx_4, key=f"g{grp}_4")
-                
-                respostas[grp] = {"pos1": pos1, "pos2": pos2, "pos3": pos3, "pos4": pos4}
-                st.divider()
-                
-            if st.form_submit_button("💾 Salvar Previsão dos Grupos", use_container_width=True):
-                for grp, dados in respostas.items():
-                    dados.update({'email_usuario': st.session_state.email_usuario, 'grupo': grp})
-                    if grp in mapa_b: supabase.table("bonus_grupos").update(dados).eq("email_usuario", st.session_state.email_usuario).eq("grupo", grp).execute()
-                    else: supabase.table("bonus_grupos").insert(dados).execute()
-                st.success("Previsões dos grupos gravadas sem duplicidades!")
+                if b_ant.get('pos1') in times:
+                    st.session_state[f"arr_{grp}"] = [b_ant['pos1'], b_ant['pos2'], b_ant['pos3'], b_ant['pos4']]
+                else:
+                    st.session_state[f"arr_{grp}"] = list(times)
+
+        for grp, times in GRUPOS_COPA.items():
+            st.subheader(f"Grupo {grp}")
+            current_teams = st.session_state[f"arr_{grp}"]
+            c1, c2, c3, c4 = st.columns(4)
+            
+            c1.selectbox("1º Lugar", times, index=times.index(current_teams[0]), key=f"sb_g{grp}_0", on_change=check_swap, args=(grp, 0))
+            c2.selectbox("2º Lugar", times, index=times.index(current_teams[1]), key=f"sb_g{grp}_1", on_change=check_swap, args=(grp, 1))
+            c3.selectbox("3º Lugar", times, index=times.index(current_teams[2]), key=f"sb_g{grp}_2", on_change=check_swap, args=(grp, 2))
+            c4.selectbox("4º Lugar", times, index=times.index(current_teams[3]), key=f"sb_g{grp}_3", on_change=check_swap, args=(grp, 3))
+            st.divider()
+            
+        if st.button("💾 Salvar Previsão dos Grupos", use_container_width=True, type="primary"):
+            for grp in GRUPOS_COPA.keys():
+                final_teams = st.session_state[f"arr_{grp}"]
+                dados = {
+                    "email_usuario": st.session_state.email_usuario, "grupo": grp,
+                    "pos1": final_teams[0], "pos2": final_teams[1], "pos3": final_teams[2], "pos4": final_teams[3]
+                }
+                if grp in mapa_b:
+                    supabase.table("bonus_grupos").update(dados).eq("email_usuario", st.session_state.email_usuario).eq("grupo", grp).execute()
+                else:
+                    supabase.table("bonus_grupos").insert(dados).execute()
+            st.success("Todas as suas previsões de classificação foram salvas com sucesso!")
+            st.rerun()
 
     # --- 3. BÔNUS 2: CHAVE FINAL ---
     elif menu == "Bônus 2: Chave Final":
