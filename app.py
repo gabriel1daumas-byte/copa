@@ -76,6 +76,23 @@ def buscar_dados_paginados(tabela, colunas="*", filtro_col=None, filtro_val=None
         inicio += tamanho_lote
     return dados
 
+# --- CALLBACK DE TROCA INTELIGENTE (SWAP) PARA O BÔNUS 1 ---
+def check_swap(grp, pos_idx):
+    key_changed = f"sb_g{grp}_{pos_idx}"
+    new_val = st.session_state[key_changed]
+    current_list = st.session_state[f"arr_{grp}"]
+    old_val = current_list[pos_idx]
+    
+    if new_val == old_val: return
+        
+    if new_val in current_list:
+        other_idx = current_list.index(new_val)
+        current_list[other_idx] = old_val
+        st.session_state[f"sb_g{grp}_{other_idx}"] = old_val
+        
+    current_list[pos_idx] = new_val
+    st.session_state[f"arr_{grp}"] = current_list
+
 # --- FÓRMULAS DE PONTUAÇÃO ---
 def calcular_pontos_grupos(p_c, p_f, r_c, r_f):
     if pd.isna(r_c) or pd.isna(r_f) or pd.isna(p_c) or pd.isna(p_f): return 0
@@ -179,7 +196,7 @@ if not st.session_state.logado:
                     u = res.data[0]
                     if u.get("senha"): st.warning("Este e-mail já possui conta activa. Use a aba de Login.")
                     else:
-                        supabase.table("usuarios").update({"senha": senha_cad, "nome": nome_cad}).eq("email", email_cad).execute()
+                        supabase.table("usuarios").update({"senha": senha_cad, "nome": name_cad}).eq("email", email_cad).execute()
                         st.success("Sua conta foi ativada com sucesso!")
                         st.session_state.update(logado=True, email_usuario=email_cad, nome_usuario=nome_cad, is_superadmin=u.get('is_superadmin', False))
                         st.rerun()
@@ -228,6 +245,9 @@ elif st.session_state.bolao_ativo_id is None:
 # ECRÃ 3: DENTRO DO BOLÃO
 # ==========================================
 else:
+    # DEFINIÇÃO DA VARIÁVEL DE TEMPO UNIVERSAL PARA EVITAR NAMEERROR ENTRE ESCOPOS
+    agora = datetime.now(fuso_br)
+    
     nome_exibicao_sidebar = st.session_state.bolao_ativo_nome
     st.sidebar.title(f"🌍 {nome_exibicao_sidebar}")
     
@@ -271,7 +291,6 @@ else:
         if not jogos_db: st.info("Nenhum jogo cadastrado nesta fase.")
         else:
             jogos = ordenar_jogos(jogos_db)
-            agora = datetime.now(fuso_br)
             meus_p = buscar_dados_paginados("palpites_copa", "*", "email_usuario", st.session_state.email_usuario)
             mapa_meus = {str(p['id_jogo']): p for p in meus_p}
             
@@ -448,7 +467,6 @@ else:
             if not jogos_db: st.info("Nenhum jogo nesta fase.")
             else:
                 jogos = ordenar_jogos(jogos_db)
-                agora = datetime.now(fuso_br)
                 jogos_validos = [j for j in jogos if j.get('times_confirmados')]
                 grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_validos)))
                 
@@ -527,7 +545,6 @@ else:
         st.title("🛤️ Caminho para a Glória — Simulador do Mata-Mata")
         
         jogos_r32 = buscar_dados_paginados("jogos_copa", "*", "fase", "Trinta-e-dois-avos de Final")
-        agora = datetime.now(fuso_br)
         
         passou_do_prazo_r32 = False
         if jogos_r32:
@@ -697,7 +714,6 @@ else:
         else:
             usuarios_dados = buscar_dados_paginados("usuarios", "email, nome", "email", emails)
             all_jogos_adm = buscar_dados_paginados("jogos_copa", "*")
-            agora_adm = datetime.now(fuso_br)
             
             adm_tab1, adm_tab2, adm_tab3, adm_tab4 = st.tabs([
                 "➕ Autorizar Jogador", "📅 Partidas do Dia", "⏳ Pendentes (Próximos 2 Dias)", "🔮 Pendentes (Videntes)"
@@ -721,7 +737,7 @@ else:
                 for j in all_jogos_adm:
                     if j.get('times_confirmados') and j.get('horario_fechamento'):
                         dt_jogo = converter_para_br(j['horario_fechamento']) + timedelta(minutes=30)
-                        if dt_jogo.date() == agora_adm.date(): jogos_hoje.append(j)
+                        if dt_jogo.date() == agora.date(): jogos_hoje.append(j)
                             
                 if not jogos_hoje: st.info("Nenhum confronto oficial agendado para a data de hoje.")
                 else:
@@ -735,8 +751,8 @@ else:
                         
             with adm_tab3:
                 st.subheader("⏳ Alerta: Palpites Pendentes para os Próximos 2 Dias")
-                limite_2_dias = agora_adm + timedelta(days=2)
-                jogos_proximos = [j for j in all_jogos_adm if j.get('times_confirmados') and j.get('horario_fechamento') and agora_adm <= converter_para_br(j['horario_fechamento']) <= limite_2_dias]
+                limite_2_dias = agora + timedelta(days=2)
+                jogos_proximos = [j for j in all_jogos_adm if j.get('times_confirmados') and j.get('horario_fechamento') and agora <= converter_para_br(j['horario_fechamento']) <= limite_2_dias]
                 
                 if not jogos_proximos: st.success("🎉 Não há nenhum jogo agendado ou com mercado aberto para as próximas 48 horas!")
                 else:
@@ -802,10 +818,19 @@ else:
         st.title("Controlo Central da Copa 2026")
         sa1, sa2, sa3, sa4, sa5, sa6 = st.tabs(["1. Automático", "2. Cadastrar Mata-Mata", "3. Lançar Placares Reais", "4. Gabarito Grupos", "5. Gabarito Chave Dinâmico", "6. Configs & Editor Manual"])
         
-        # --- ABA 1 ATUALIZADA COM O COMBO DE VISUALIZAÇÃO SOLICITADO ---
+        # --- 🚀 REESTRUTURAÇÃO COMPLETA DA ABA 1 (TRAVA ANTI-CLIQUE + LISTA SEM ID) ---
         with sa1:
-            st.subheader("Injeção em Massa")
-            if st.button("🚀 Injetar 72 Jogos Iniciais da Fase de Grupos", use_container_width=True):
+            st.subheader("Injeção Automática da Fase de Grupos")
+            
+            # Puxa os jogos atuais salvos para contagem e renderização
+            jogos_fg = buscar_dados_paginados("jogos_copa", "*", "fase", "Fase de Grupos")
+            qtd_jogos_fg = len(jogos_fg)
+            
+            # Lógica de bloqueio estrito de cliques adicionais
+            botao_desativado = qtd_jogos_fg >= 72
+            texto_botao = "🚀 Injetar 72 Jogos Iniciais da Fase de Grupos" if not botao_desativado else "✅ Fase de Grupos Já Injetada (72 Jogos Salvos)"
+            
+            if st.button(texto_botao, use_container_width=True, disabled=botao_desativado):
                 jogos_gerados = []
                 data_base = datetime(2026, 6, 11, 16, 0)
                 for grp, times in GRUPOS_COPA.items():
@@ -819,17 +844,31 @@ else:
                 st.rerun()
                 
             st.divider()
-            st.subheader("👀 Jogos da Fase de Grupos Cadastrados")
-            jogos_fg = buscar_dados_paginados("jogos_copa", "*", "fase", "Fase de Grupos")
+            st.subheader("📅 Tabela de Jogos Exibição (Separado por Grupo)")
+            
             if jogos_fg:
-                opcoes_fg = []
+                # Agrupa dinamicamente em memória mapeando por letra do grupo
+                mapa_exibicao_grupos = {g: [] for g in GRUPOS_COPA.keys()}
                 for j in ordenar_jogos(jogos_fg):
-                    hf_br = converter_para_br(j['horario_fechamento'])
-                    hj_br = hf_br + timedelta(minutes=30)
-                    opcoes_fg.append(f"ID: {j['id']} | {j['time_casa']} x {j['time_fora']} — 📅 {hj_br.strftime('%d/%m às %H:%M')}")
-                st.selectbox("Selecione um jogo para visualizar as informações de calendário:", opcoes_fg, key="sb_visualizar_fg_master")
+                    grp_match = get_grupo(j['time_casa'])
+                    if grp_match in mapa_exibicao_grupos:
+                        mapa_exibicao_grupos[grp_match].append(j)
+                
+                # Renderiza em duas colunas responsivas organizadas por expanders limpos
+                c_g1, c_g2 = st.columns(2)
+                for idx_g, grp_letter in enumerate(sorted(GRUPOS_COPA.keys())):
+                    col_alvo = c_g1 if idx_g < 6 else c_g2
+                    with col_alvo:
+                        with st.expander(f"📦 Grupo {grp_letter}", expanded=False):
+                            for j in mapa_exibicao_grupos[grp_letter]:
+                                hf_br = converter_para_br(j['horario_fechamento'])
+                                hj_br = hf_br + timedelta(minutes=30)
+                                # Sumiu com IDs da linha, deixando apenas o jogo e os horários certinhos
+                                st.write(f"⚽ **{j['time_casa']} x {j['time_fora']}**")
+                                st.caption(f"📅 Dia {hj_br.strftime('%d/%m às %H:%M')}")
+                                st.write("")
             else:
-                st.info("Nenhum jogo da Fase de Grupos encontrado na base de dados até o momento.")
+                st.info("Nenhum jogo da Fase de Grupos encontrado no sistema até o momento.")
                 
         with sa2:
             st.subheader("🛠️ Gestão e Inserção de Rodadas Eliminatórias")
@@ -867,7 +906,7 @@ else:
             if "🚨" in modo_placar:
                 for j in todos_jogos_ativos:
                     if j.get('times_confirmados') and j.get('horario_fechamento'):
-                        iniciou = agora_adm >= (converter_para_br(j['horario_fechamento']) + timedelta(minutes=30))
+                        iniciou = agora >= (converter_para_br(j['horario_fechamento']) + timedelta(minutes=30))
                         gols_nao_cadastrados = j.get('gols_casa_real') is None or j.get('gols_fora_real') is None
                         if iniciou and gols_nao_cadastrados: jogos_filtrados_placar.append(j)
                 if not jogos_filtrados_placar: st.success("🎉 Todos os jogos iniciados até o momento já possuem placar oficial cadastrado!")
