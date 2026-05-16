@@ -102,7 +102,7 @@ def calcular_pontos_grupos(p_c, p_f, r_c, r_f):
     if res_p == res_r: return 1
     return 0
 
-def calcular_pontos_mata_mata(p_c, p_f, p_class, r_c, r_f, r_class):
+def calcular_pontos_matamata(p_c, p_f, p_class, r_c, r_f, r_class):
     if pd.isna(r_c) or pd.isna(r_f) or pd.isna(p_c) or pd.isna(p_f) or pd.isna(r_class): return 0
     res_p = 'C' if p_c > p_f else ('F' if p_f > p_c else 'E')
     res_r = 'C' if r_c > r_f else ('F' if r_f > r_c else 'E')
@@ -292,11 +292,12 @@ else:
     liberado_mata = config_global.get('palpites_matamata_liberados', False)
     liberado_chave_bonus = config_global.get('bonus_chave_liberado', False)
 
-    # --- 1. FAZER PALPITES DE JOGOS ---
+    # --- 1. FAZER PALPITES DE JOGOS (MATA-MATA DESBLOQUEADO GLOBALMENTE) ---
     if menu == "Fazer Palpites de Jogos":
-        st.title(f"Palpites - {fase_ativa}")
-        jogos_db = buscar_dados_paginados("jogos_copa", "*", "fase", fase_ativa)
-        if not jogos_db: st.info("Nenhum jogo cadastrado nesta fase.")
+        st.title(f"Palpites Disponíveis")
+        # CORREÇÃO: Puxa todos os jogos e faz o filtro dinamicamente na aplicação
+        jogos_db = buscar_dados_paginados("jogos_copa", "*")
+        if not jogos_db: st.info("Nenhum jogo cadastrado no sistema.")
         else:
             jogos = ordenar_jogos(jogos_db)
             meus_p = buscar_dados_paginados("palpites_copa", "*", "email_usuario", st.session_state.email_usuario)
@@ -310,21 +311,21 @@ else:
                 if not j.get('is_mata_mata') and not liberado_grupos: continue
                 jogos_abertos.append(j)
                 
-            if not jogos_abertos: st.warning("🔒 Todos os jogos estão fechados ou bloqueados pelo Super Admin.")
+            if not jogos_abertos: st.warning("🔒 Todos os mercados de apostas estão fechados ou bloqueados pelo Administrador.")
             else:
                 aba_pendentes, aba_grupos, aba_mata = st.tabs(["🚨 Faltam Palpitar", "⚽ Fase de Grupos", "🔥 Mata-Mata"])
 
                 with aba_pendentes:
                     jogos_faltando = [j for j in jogos_abertos if str(j['id']) not in mapa_meus]
                     if not jogos_faltando: 
-                        st.success("🎉 Sensacional! Todos os seus palpites para os jogos liberados já foram registrados!")
+                        st.success("🎉 Sensacional! Todos os seus palpites para as partidas abertas já estão registrados!")
                     else:
-                        st.error(f"⚠️ Até agora faltam palpites para {len(jogos_faltando)} jogo(s) aberto(s).")
-                        st.caption("Navegue pelas abas 'Fase de Grupos' ou 'Mata-Mata' abaixo para preencher os confrontos listados:")
+                        st.error(f"⚠️ Atenção! Faltam palpites para {len(jogos_faltando)} jogo(s) aberto(s).")
+                        st.caption("Navegue pelas abas abaixo para preencher os confrontos listados:")
                         st.write("")
                         
                         for j in jogos_faltando:
-                            tipo_fase = f"Grupo {get_grupo(j['time_casa'])}" if not j.get('is_mata_mata') else "Mata-Mata"
+                            tipo_fase = f"Grupo {get_grupo(j['time_casa'])}" if not j.get('is_mata_mata') else f"{j['fase']}"
                             hf_br = converter_para_br(j['horario_fechamento'])
                             st.info(f"⏳ **{j['time_casa']} x {j['time_fora']}** — *({tipo_fase})*\n\n"
                                     f"⏰ **Fecha em:** {hf_br.strftime('%d/%m às %H:%M')}")
@@ -375,7 +376,7 @@ else:
 
                 with aba_mata:
                     jogos_m = [j for j in jogos_abertos if j.get('is_mata_mata')]
-                    if not jogos_m: st.info("Nenhum jogo de Mata-Mata liberado ainda.")
+                    if not jogos_m: st.info("Nenhum jogo de Mata-Mata liberado e confirmado ainda.")
                     else:
                         with st.form("form_mata"):
                             novos_p_m = {}
@@ -387,7 +388,7 @@ else:
                                 hf_br = converter_para_br(j['horario_fechamento'])
                                 hj_br = hf_br + timedelta(minutes=30)
                                 
-                                st.write(f"### {j['time_casa']} x {j['time_fora']}")
+                                st.write(f"### {j['time_casa']} x {j['time_fora']} — *({j['fase']})*")
                                 st.caption(f"📅 **Jogo:** {hj_br.strftime('%d/%m às %H:%M')} | 🔒 **Limite para chutar:** {hf_br.strftime('%H:%M')}")
                                 
                                 c1, c2, c3 = st.columns([3, 1, 3])
@@ -396,7 +397,7 @@ else:
                                 v_fora = c3.number_input(f"Gols {j['time_fora']}", min_value=0, step=1, value=gf, key=f"m_f_{j['id']}")
                                 op_cl = [j['time_casa'], j['time_fora']]
                                 idx_cl = op_cl.index(cl) if cl in op_cl else 0
-                                v_classif = st.radio("Quem passa?", op_cl, index=idx_cl, key=f"m_cl_{j['id']}", horizontal=True)
+                                v_classif = st.radio("Quem se classifica?", op_cl, index=idx_cl, key=f"m_cl_{j['id']}", horizontal=True)
                                 novos_p_m[j['id']] = {"gols_casa": v_casa, "gols_fora": v_fora, "classificado": v_classif}
                                 st.divider()
                             if st.form_submit_button("💾 Salvar Mata-Mata", use_container_width=True):
@@ -407,11 +408,11 @@ else:
                                         supabase.table("palpites_copa").insert(dados).execute()
                                 st.success("Palpites do Mata-Mata salvos!"); st.rerun()
 
-    # --- 1B. ABA: MEUS PALPITES ---
+    # --- 1B. ABA: MEUS PALPITES (CORRIGIDO: ABRE TODAS AS FASES SALVAS COESAMENTE) ---
     elif menu == "Meus Palpites":
         st.title("📋 Meus Palpites Registrados")
-        jogos_db = buscar_dados_paginados("jogos_copa", "*", "fase", fase_ativa)
-        if not jogos_db: st.info("Nenhum jogo nesta fase.")
+        jogos_db = buscar_dados_paginados("jogos_copa", "*")
+        if not jogos_db: st.info("Nenhum jogo na base de dados.")
         else:
             jogos = ordenar_jogos(jogos_db)
             meus_p = buscar_dados_paginados("palpites_copa", "*", "email_usuario", st.session_state.email_usuario)
@@ -421,7 +422,7 @@ else:
             grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_validos)))
             
             if grupos_disponiveis:
-                grupo_sel = st.selectbox("🎯 Escolha o Grupo para conferir suas apostas:", grupos_disponiveis, key="sb_meus_grupos_view")
+                grupo_sel = st.selectbox("🎯 Escolha o Grupo/Mata-Mata para conferir suas apostas:", grupos_disponiveis, key="sb_meus_grupos_view")
                 jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
                 
                 total_pontos_grupo = 0
@@ -432,20 +433,20 @@ else:
                     pts_jogo = 0
                     if p and j.get('gols_casa_real') is not None:
                         if j.get('is_mata_mata'):
-                            pts_jogo = calcular_pontos_mata_mata(p['gols_casa'], p['gols_fora'], p['classificado'], j['gols_casa_real'], j['gols_fora_real'], j['classificado_real'])
+                            pts_jogo = calcular_pontos_matamata(p['gols_casa'], p['gols_fora'], p['classificado'], j['gols_casa_real'], j['gols_fora_real'], j['classificado_real'])
                         else:
                             pts_jogo = calcular_pontos_grupos(p['gols_casa'], p['gols_fora'], j['gols_casa_real'], j['gols_fora_real'])
                     total_pontos_grupo += pts_jogo
                     lista_jogos_processados.append((j, p, pts_jogo))
                 
-                st.metric(label=f"📊 Total de Pontos Conquistados no Grupo/Fase {grupo_sel}", value=f"{total_pontos_grupo} pts")
+                st.metric(label=f"📊 Total de Pontos Conquistados no Bloco {grupo_sel}", value=f"{total_pontos_grupo} pts")
                 st.write("")
                 
                 if not lista_jogos_processados:
-                    st.info(f"Nenhum confronto registrado para o Grupo {grupo_sel} nesta fase.")
+                    st.info(f"Nenhum confronto registrado para o Bloco {grupo_sel} no momento.")
                 else:
                     for j, p, pts_jogo in lista_jogos_processados:
-                        st.write(f"#### ⚽ {j['time_casa']} x {j['time_fora']}")
+                        st.write(f"#### ⚽ {j['time_casa']} x {j['time_fora']} — *({j['fase']})*")
                         if p:
                             placar_txt = f"**Seu Palpite:** {p['gols_casa']} x {p['gols_fora']}"
                             if j.get('is_mata_mata') and p.get('classificado'): placar_txt += f" | **Classifica:** {p['classificado']}"
@@ -460,7 +461,7 @@ else:
                         else: st.markdown("⏳ *Aguardando encerramento e resultado oficial do confronto.*")
                         st.write("---")
 
-    # --- 1C. ABA: PALPITES DA GALERA ---
+    # --- 1C. ABA: PALPITES DA GALERA (CORRIGIDO: PERMITE ESPIAR MATA-MATA) ---
     elif menu == "Palpites da Galera":
         st.title("👥 Palpites de Todos os Participantes")
         membros = buscar_dados_paginados("membros_bolao", "email_usuario", "id_bolao", st.session_state.bolao_ativo_id)
@@ -470,26 +471,26 @@ else:
         else:
             usuarios_dados = buscar_dados_paginados("usuarios", "email, nome", "email", emails)
             mapa_nomes = {u['email']: u['nome'] for u in usuarios_dados}
-            jogos_db = buscar_dados_paginados("jogos_copa", "*", "fase", fase_ativa)
+            jogos_db = buscar_dados_paginados("jogos_copa", "*")
             
-            if not jogos_db: st.info("Nenhum jogo nesta fase.")
+            if not jogos_db: st.info("Nenhum jogo cadastrado.")
             else:
                 jogos = ordenar_jogos(jogos_db)
                 jogos_validos = [j for j in jogos if j.get('times_confirmados')]
                 grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_validos)))
                 
                 if grupos_disponiveis:
-                    grupo_sel = st.selectbox("🎯 Escolha o Grupo para espiar os rivais:", grupos_disponiveis, key="sb_galera_grupo_view")
-                    jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
+                    grupo_sel = st.selectbox("🎯 Escolha o Bloco para espiar os rivais:", grupos_disponiveis, key="sb_grid_galera_view")
+                    jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == group_sel if 'group_sel' in locals() else get_grupo(j['time_casa']) == grupo_sel]
                     
                     all_palpites = buscar_dados_paginados("palpites_copa", "*", "email_usuario", emails)
                     mapa_palpites = {(p['id_jogo'], p['email_usuario']): p for p in all_palpites}
                     
                     if not jogos_deste:
-                        st.info(f"Nenhum jogo pendente ou aberto para o Grupo {grupo_sel} nesta rodada.")
+                        st.info(f"Nenhum jogo aberto ou pendente no Bloco {grupo_sel}.")
                     else:
                         for j in jogos_deste:
-                            st.write(f"#### ⚽ {j['time_casa']} x {j['time_fora']}")
+                            st.write(f"#### ⚽ {j['time_casa']} x {j['time_fora']} — *({j['fase']})*")
                             hf_br = converter_para_br(j['horario_fechamento'])
                             is_liberado = agora >= hf_br
                             
@@ -909,7 +910,7 @@ else:
             else:
                 for j in ordenar_jogos(jogos_fase_existentes): st.text(f"ID: {j['id']} | {j['time_casa']} x {j['time_fora']} - Fechamento: {converter_para_br(j['horario_fechamento']).strftime('%d/%m %H:%M')}")
             
-        # --- 🔍 INTERFACE DE LANÇAMENTO EXCLUSIVA TOTALMENTE ABERTA (SEM EXPANDER E COM UX STATUS BADGES) ---
+        # --- INTERFACE DE LANÇAMENTO EXCLUSIVA TOTALMENTE ABERTA (SEM EXPANDER E COM UX STATUS BADGES) ---
         with sa3:
             st.subheader("⚽ Emissão de Resultados Reais da Copa")
             modo_placar = st.radio("Filtro de busca:", ["🚨 Placares Faltando (Jogos Iniciados Sem Resultado)", "🔍 Filtrar por Fase/Grupo Completo"], horizontal=True, key="rb_modo_placar_master")
@@ -939,7 +940,6 @@ else:
                 for j in ordenar_jogos(jogos_filtrados_placar):
                     is_salvo = j.get('gols_casa_real') is not None and j.get('gols_fora_real') is not None
                     
-                    #UX DEMONSTRATION DE STATUS NA HEAD DA LINHA
                     if is_salvo:
                         st.markdown(f"#### 🟢 **[SALVO]** {j['time_casa']} vs {j['time_fora']} — *({j['fase']})*")
                     else:
@@ -947,7 +947,6 @@ else:
                     
                     c_c1, c_c2, c_c3 = st.columns([2, 2, 2]) if not j.get('is_mata_mata') else st.columns([2, 2, 3])
                     
-                    # Carrega placares salvos automaticamente nas caixas de input
                     val_casa = int(j['gols_casa_real']) if j.get('gols_casa_real') is not None else 0
                     val_fora = int(j['gols_fora_real']) if j.get('gols_fora_real') is not None else 0
                     
@@ -1025,11 +1024,10 @@ else:
                         
                     if st.form_submit_button(f"💾 Gravar Gabarito Oficial de {fase_gab_sel}", use_container_width=True):
                         str_vencedores = ",".join(vencedores_fase)
-                        dados_g_chave = { "id": 1, regra["col"]: str_vencedores }
                         if gab_c_db:
                             supabase.table("gabarito_chave").update({regra["col"]: str_vencedores}).eq("id", 1).execute()
                         else:
-                            supabase.table("gabarito_chave").insert(dados_g_chave).execute()
+                            supabase.table("gabarito_chave").insert({"id": 1, regra["col"]: str_vencedores}).execute()
                         st.success(f"Gabarito oficial da fase '{fase_gab_sel}' gravado e atualizado!"); st.rerun()
 
         with sa6:
