@@ -34,6 +34,7 @@ GRUPOS_COPA = {
 }
 
 TIMES_COPA = sorted([time for times in GRUPOS_COPA.values() for time in times])
+FASES_MATA_MATA = ["Trinta-e-dois-avos de Final", "Oitavas de Final", "Quartas de Final", "Semifinais", "Final"]
 
 @st.cache_resource
 def init_connection():
@@ -81,8 +82,7 @@ def check_swap(grp, pos_idx):
     current_list = st.session_state[f"arr_{grp}"]
     old_val = current_list[pos_idx]
     
-    if new_val == old_val:
-        return
+    if new_val == old_val: return
         
     if new_val in current_list:
         other_idx = current_list.index(new_val)
@@ -259,7 +259,6 @@ else:
             
     if st.session_state.is_superadmin: menu_opcoes.append("👑 SUPER ADMIN GERAL")
     
-    # --- 🛠️ ENGENHARIA DE BOTÕES DE NAVEGAÇÃO LATERAIS DINÂMICOS ---
     if not st.session_state.menu_atual or st.session_state.menu_atual not in menu_opcoes:
         st.session_state.menu_atual = menu_opcoes[0]
 
@@ -275,7 +274,6 @@ else:
             
     menu = st.session_state.menu_atual
     
-    # --- INTERFACE EXCLUSIVA DO SELETOR DE GRUPO NA TELA PRINCIPAL ---
     grupo_sel = None
     if menu in ["Fazer Palpites de Jogos", "Meus Palpites", "Palpites da Galera"] and st.session_state.bolao_ativo_id != "MASTER":
         lista_todos_grupos = sorted(list(GRUPOS_COPA.keys()))
@@ -330,7 +328,6 @@ else:
                     else:
                         grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_g if get_grupo(j['time_casa']) != "Mata-Mata")))
                         if grupos_disponiveis:
-                            # SELETOR DE GRUPO CENTRALIZADO NA TELA PRINCIPAL
                             grupo_sel = st.selectbox("🎯 Escolha o Grupo para visualizar/palpitar:", grupos_disponiveis, key="sb_grupo_palpites")
                             
                             with st.form(f"form_grupo_{grupo_sel}"):
@@ -417,9 +414,8 @@ else:
             grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_validos)))
             
             if grupos_disponiveis:
-                # SELETOR DE GRUPO CENTRALIZADO NA TELA PRINCIPAL
                 grupo_sel = st.selectbox("🎯 Escolha o Grupo para conferir suas apostas:", grupos_disponiveis, key="sb_meus_grupos_view")
-                jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
+                jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == group_sel]
                 
                 total_pontos_grupo = 0
                 lista_jogos_processados = []
@@ -477,7 +473,6 @@ else:
                 grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_validos)))
                 
                 if grupos_disponiveis:
-                    # SELETOR DE GRUPO CENTRALIZADO NA TELA PRINCIPAL
                     grupo_sel = st.selectbox("🎯 Escolha o Grupo para espiar os rivais:", grupos_disponiveis, key="sb_galera_grupo_view")
                     jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
                     
@@ -506,7 +501,7 @@ else:
                                 st.warning("🔒 Palpites ocultos. A tabela de apostas da galera será revelada automaticamente faltando 29 minutos para o início do jogo!")
                             st.write("---")
 
-    # --- 2. BÔNUS 1: VIDENTES COM SWAP DINÂMICO (CLASSIFICAÇÃO INTELIGENTE) ---
+    # --- 2. BÔNUS 1: VIDENTES COM SWAP DINÂMICO ---
     elif menu == "Bônus 1: Videntes dos Grupos":
         st.title("🔮 Videntes da Fase de Grupos")
         st.caption("Monte a sua classificação. Se escolher uma seleção que já está em outra posição, o sistema inverterá as duas posições automaticamente!")
@@ -723,60 +718,113 @@ else:
                         supabase.table("membros_bolao").insert({"id_bolao": st.session_state.bolao_ativo_id, "email_usuario": novo_email, "is_admin": False}).execute()
                         st.success(f"{novo_email} autorizado!")
 
-    # --- 6. SUPER ADMIN GERAL ---
+    # --- 6. 👑 CÉLULA MASTER: SUPER ADMIN GERAL REESTRUTURADO 👑 ---
     elif menu == "👑 SUPER ADMIN GERAL":
-        st.title("Controlo da Copa 2026")
-        sa1, sa2, sa3, sa4, sa5, sa6 = st.tabs(["1. Automático", "2. Liberação", "3. Placares", "4. Gab: Grupos", "5. Gab: Chave", "6. Configs"])
+        st.title("Controlo Central da Copa 2026")
         
+        sa1, sa2, sa3, sa4, sa5, sa6 = st.tabs([
+            "1. Automático", 
+            "2. Cadastrar Mata-Mata", 
+            "3. Lançar Placares Reais", 
+            "4. Gabarito Grupos", 
+            "5. Gabarito Chave Dinâmico", 
+            "6. Configs & Editor Manual"
+        ])
+        
+        # TAB 1: AUTOMÁTICO
         with sa1:
-            st.subheader("Injetar Fase de Grupos")
-            if st.button("🚀 Injetar 72 Jogos", use_container_width=True):
+            st.subheader("Injeção em Massa")
+            if st.button("🚀 Injetar 72 Jogos Iniciais da Fase de Grupos", use_container_width=True):
                 jogos_gerados = []
                 data_base = datetime(2026, 6, 11, 16, 0)
                 for grp, times in GRUPOS_COPA.items():
                     confrontos = [(0,1), (2,3), (0,2), (3,1), (3,0), (1,2)]
                     for c_idx, f_idx in confrontos:
                         dt_fechamento = fuso_br.localize(data_base) - timedelta(minutes=30)
-                        jogos_gerados.append({"fase": "Fase de Grupos", "is_mata_mata": False, "times_confirmados": True, "time_casa": times[c_idx], "time_fora": times[f_idx], "horario_fechamento": dt_fechamento.isoformat()})
+                        jogos_gerados.append({
+                            "fase": "Fase de Grupos", "is_mata_mata": False, "times_confirmados": True,
+                            "time_casa": times[c_idx], "time_fora": times[f_idx], "horario_fechamento": dt_fechamento.isoformat()
+                        })
                         data_base += timedelta(hours=6)
                 for j in jogos_gerados: supabase.table("jogos_copa").insert(j).execute()
-                st.success("72 jogos inseridos com sucesso!")
+                st.success("72 confrontos iniciais carregados na base de dados!")
                 
+        # TAB 2: CADASTRAR MATA-MATA (LIVRE E POR COMBOBOX)
         with sa2:
-            st.subheader("Substituir e Liberar Mata-Mata")
-            pendentes = supabase.table("jogos_copa").select("*").eq("times_confirmados", False).execute().data
-            if pendentes:
-                for j in pendentes:
-                    with st.form(f"confirmar_{j['id']}"):
-                        st.write(f"🔄 **{j['time_casa']} x {j['time_fora']}**")
-                        c1, c2 = st.columns(2)
-                        real_casa = c1.selectbox("Casa", TIMES_COPA, key=f"rc_{j['id']}")
-                        real_fora = c2.selectbox("Fora", TIMES_COPA, key=f"rf_{j['id']}")
-                        if st.form_submit_button(f"Liberar Jogo", use_container_width=True):
-                            supabase.table("jogos_copa").update({"time_casa": real_casa, "time_fora": real_fora, "times_confirmados": True}).eq("id", j['id']).execute()
-                            st.rerun()
-            else: st.info("Sem jogos pendentes.")
+            st.subheader("🛠️ Gestão e Inserção de Rodadas Eliminatórias")
+            fase_cadastro_sel = st.selectbox("Selecione qual fase deseja gerenciar/cadastrar:", FASES_MATA_MATA, key="sb_fase_cadastro")
             
+            with st.form(f"form_cad_manual_{fase_cadastro_sel}"):
+                st.write(f"**Novo Confronto para: {fase_cadastro_sel}**")
+                c1, c2 = st.columns(2)
+                t_casa = c1.selectbox("Equipa Casa", TIMES_COPA, key=f"add_tc_{fase_cadastro_sel}")
+                t_fora = c2.selectbox("Equipa Fora", TIMES_COPA, key=f"add_tf_{fase_cadastro_sel}")
+                
+                c3, c4 = st.columns(2)
+                data_j = c3.date_input("Data do Jogo", datetime(2026, 6, 28))
+                hora_j = c4.time_input("Horário do Jogo (Fuso BR)", time(16, 0))
+                
+                if st.form_submit_button("➕ Salvar Confronto Eliminatório", use_container_width=True):
+                    dt_comb = datetime.combine(data_j, hora_j)
+                    dt_fechamento = fuso_br.localize(dt_comb) - timedelta(minutes=30)
+                    
+                    supabase.table("jogos_copa").insert({
+                        "fase": fase_cadastro_sel, "is_mata_mata": True, "times_confirmados": True,
+                        "time_casa": t_casa, "time_fora": t_fora, "horario_fechamento": dt_fechamento.isoformat()
+                    }).execute()
+                    st.success("Confronto inserido e ativado com sucesso!"); st.rerun()
+            
+            st.write("---")
+            st.write(f"👁️ **Jogos Cadastrados em: {fase_cadastro_sel}**")
+            jogos_fase_existentes = buscar_dados_paginados("jogos_copa", "*", "fase", fase_cadastro_sel)
+            if not jogos_fase_existentes: st.info("Nenhum confronto nesta fase ainda.")
+            else:
+                for j in ordenar_jogos(jogos_fase_existentes):
+                    st.text(f"ID: {j['id']} | {j['time_casa']} x {j['time_fora']} - Fechamento: {converter_para_br(j['horario_fechamento']).strftime('%d/%m %H:%M')}")
+            
+        # TAB 3: LANÇAR PLACARES REAIS (COM MENU DE PENDÊNCIAS EM TEMPO REAL)
         with sa3:
-            st.subheader("Lançar Placares Reais")
-            jogos_r = supabase.table("jogos_copa").select("*").eq("times_confirmados", True).execute().data
-            if jogos_r:
-                for j in ordenar_jogos(jogos_r):
-                    with st.expander(f"⚽ {j['time_casa']} x {j['time_fora']}"):
+            st.subheader("⚽ Atualização de Resultados Reais da Copa")
+            modo_placar = st.radio("Filtro de busca:", ["🚨 Placares Faltando (Jogos Iniciados Sem Resultado)", "🔍 Filtrar por Fase/Grupo Completo"], horizontal=True)
+            
+            jogos_filtrados_placar = []
+            todos_jogos_ativos = buscar_dados_paginados("jogos_copa", "*")
+            agora = datetime.now(fuso_br)
+            
+            if "🚨" in modo_placar:
+                for j in todos_jogos_ativos:
+                    if j.get('times_confirmados') and j.get('horario_fechamento'):
+                        # Se o jogo já começou (horário de fechamento + 30min) e os gols reais estão nulos
+                        iniciou = agora >= (converter_para_br(j['horario_fechamento']) + timedelta(minutes=30))
+                        gols_nao_cadastrados = j.get('gols_casa_real') is None or j.get('gols_fora_real') is None
+                        if iniciou and gols_nao_cadastrados:
+                            jogos_filtrados_placar.append(j)
+                if not jogos_filtrados_placar: st.success("🎉 Todos os jogos iniciados até o momento já possuem placar oficial cadastrado!")
+            else:
+                lista_fases_existentes = sorted(list(set(j['fase'] for j in todos_jogos_ativos if j.get('fase'))))
+                fase_placar_sel = st.selectbox("Escolha a Fase/Grupo:", lista_fases_existentes)
+                jogos_filtrados_placar = [j for j in todos_jogos_ativos if j['fase'] == fase_placar_sel and j.get('times_confirmados')]
+            
+            if jogos_filtrados_placar:
+                for j in ordenar_jogos(jogos_filtrados_placar):
+                    with st.expander(f"⚙️ ID: {j['id']} | {j['time_casa']} x {j['time_fora']} ({j['fase']})"):
                         c1, c2 = st.columns(2)
-                        r_c = c1.number_input("Golos Casa", min_value=0, step=1, value=j.get('gols_casa_real') or 0, key=f"rrc_{j['id']}")
-                        r_f = c2.number_input("Golos Fora", min_value=0, step=1, value=j.get('gols_fora_real') or 0, key=f"rrf_{j['id']}")
+                        r_c = c1.number_input("Gols Reais Casa", min_value=0, step=1, value=j.get('gols_casa_real') or 0, key=f"rrc_m_{j['id']}")
+                        r_f = c2.number_input("Gols Reais Fora", min_value=0, step=1, value=j.get('gols_fora_real') or 0, key=f"rrf_m_{j['id']}")
                         r_class = None
-                        if j.get('is_mata_mata'): r_class = st.radio("Passou:", [j['time_casa'], j['time_fora']], key=f"rcl_{j['id']}", horizontal=True)
-                        if st.button("Salvar Placar", key=f"b_{j['id']}", use_container_width=True):
+                        if j.get('is_mata_mata'):
+                            r_class = st.radio("Quem se classificou de fato?", [j['time_casa'], j['time_fora']], key=f"rcl_m_{j['id']}", horizontal=True)
+                        if st.button("Salvar Resultado Oficial", key=f"btn_save_r_{j['id']}", use_container_width=True):
                             up = {"gols_casa_real": r_c, "gols_fora_real": r_f}
                             if r_class: up["classificado_real"] = r_class
-                            supabase.table("jogos_copa").update(up).eq("id", j['id']).execute(); st.rerun()
+                            supabase.table("jogos_copa").update(up).eq("id", j['id']).execute()
+                            st.success("Placar registrado com sucesso!"); st.rerun()
 
+        # TAB 4: GABARITO GRUPOS
         with sa4:
-            st.subheader("Gabarito Oficial: Grupos")
+            st.subheader("Gabarito Oficial: Classificação de Grupos")
             gab_g = {g['grupo']: g for g in supabase.table("gabarito_grupos").select("*").execute().data}
-            with st.form("form_gab_grupos"):
+            with st.form("form_gab_grupos_master"):
                 novos_gab = {}
                 for grp, times in GRUPOS_COPA.items():
                     g_ant = gab_g.get(grp, {})
@@ -787,49 +835,158 @@ else:
                         "pos3": c3.selectbox(f"3º G{grp}", times, index=times.index(g_ant.get('pos3')) if g_ant.get('pos3') in times else 2),
                         "pos4": c4.selectbox(f"4º G{grp}", times, index=times.index(g_ant.get('pos4')) if g_ant.get('pos4') in times else 3)
                     }
-                if st.form_submit_button("Salvar Gabarito", use_container_width=True):
+                if st.form_submit_button("Salvar Todos os Gabaritos de Grupos", use_container_width=True):
                     for grp, dados in novos_gab.items():
                         dados['grupo'] = grp
                         if grp in gab_g: supabase.table("gabarito_grupos").update(dados).eq("grupo", grp).execute()
                         else: supabase.table("gabarito_grupos").insert(dados).execute()
-                    st.success("Gabaritos guardados!")
+                    st.success("Gabaritos oficiais dos grupos gravados com sucesso!")
 
+        # TAB 5: GABARITO DAS CHAVES (CASCATA SEQUENCIAL POR BLOCOS DE 2 EM REAL-TIME)
         with sa5:
-            st.subheader("Gabarito Oficial: Chave")
+            st.subheader("🛤️ Gabarito Oficial da Chave Eliminatória")
+            st.caption("Insira os times reais que avançaram. Os blocos seguintes se abrem dinamicamente cruzando os vencedores de 2 em 2.")
+            
             gab_c_db = supabase.table("gabarito_chave").select("*").eq("id", 1).execute().data
             g_c = gab_c_db[0] if gab_c_db else {}
             def parse_g(campo): return g_c.get(campo, '').split(',') if g_c.get(campo) else []
-            with st.form("form_gab_chave"):
-                oit = st.multiselect("As 16 Oitavas Reais (Vindas dos 32-avos)", TIMES_COPA, default=parse_g('oitavas'), max_selections=16)
-                qua = st.multiselect("As 8 Quartas Reais", TIMES_COPA, default=parse_g('quartas'), max_selections=8)
-                sem = st.multiselect("As 4 Semis Reais", TIMES_COPA, default=parse_g('semis'), max_selections=4)
-                fin = st.multiselect("Os 2 Finalistas Reais", TIMES_COPA, default=parse_g('finalistas'), max_selections=2)
-                ops_c = fin if len(fin) == 2 else ["Selecione 2 finalistas"]
-                camp = st.selectbox("O Campeão Real", ops_c, index=ops_c.index(g_c.get('campeao')) if g_c.get('campeao') in ops_c else 0)
-                if st.form_submit_button("Gravar Realidade", use_container_width=True):
-                    dados_g_chave = {"id": 1, "oitavas": ",".join(oit), "quartas": ",".join(qua), "semis": ",".join(sem), "finalistas": ",".join(fin), "campeao": camp}
-                    if gab_c_db: supabase.table("gabarito_chave").update(dados_g_chave).eq("id", 1).execute()
-                    else: supabase.table("gabarito_chave").insert(dados_g_chave).execute()
-                    st.success("Gabarito da Chave updated!")
+
+            st.write("#### Bloco 1: Quem passou da Rodada de 32 (Lista das 16 Oitavas Reais)")
+            oit = st.multiselect("Selecione os 16 vencedores dos 32-avos:", TIMES_COPA, default=parse_g('oitavas'), max_selections=16, key="gab_oitavas_multi")
+            
+            vencedores_q = []
+            vencedores_s = []
+            vencedores_f = []
+            camp_real = ""
+            
+            if len(oit) == 16:
+                st.write("---")
+                st.write("#### Bloco 2: Vencedores das Oitavas -> Avançam para as Quartas (De 2 em 2)")
+                sel_qua_salvas = parse_g('quartas')
+                c_q1, c_q2 = st.columns(2)
+                for i in range(0, 16, 2):
+                    col = c_q1 if i < 8 else c_b
+                    t1, t2 = oit[i], oit[i+1]
+                    opc = [t1, t2]
+                    p_idx = i // 2
+                    def_idx = opc.index(sel_qua_salvas[p_idx]) if p_idx < len(sel_qua_salvas) and sel_qua_salvas[p_idx] in opc else 0
+                    venc = col.selectbox(f"Mata Oitavas {p_idx+1}: {t1} x {t2}", opc, index=def_idx, key=f"gab_q_{i}")
+                    vencedores_q.append(venc)
                     
+            if len(vencedores_q) == 8:
+                st.write("---")
+                st.write("#### Bloco 3: Vencedores das Quartas -> Avançam para as Semifinais (De 2 em 2)")
+                sel_sem_salvas = parse_g('semis')
+                c_s1, c_s2 = st.columns(2)
+                for i in range(0, 8, 2):
+                    col = c_s1 if i < 4 else c_s2
+                    t1, t2 = vencedores_q[i], vencedores_q[i+1]
+                    opc = [t1, t2]
+                    p_idx = i // 2
+                    def_idx = opc.index(sel_sem_salvas[p_idx]) if p_idx < len(sel_sem_salvas) and sel_sem_salvas[p_idx] in opc else 0
+                    venc = col.selectbox(f"Mata Quartas {p_idx+1}: {t1} x {t2}", opc, index=def_idx, key=f"gab_s_{i}")
+                    vencedores_s.append(venc)
+
+            if len(vencedores_s) == 4:
+                st.write("---")
+                st.write("#### Bloco 4: Vencedores das Semis -> Os 2 Finalistas Reais")
+                sel_fin_salvas = parse_g('finalistas')
+                c_f1, c_f2 = st.columns(2)
+                for i in range(0, 4, 2):
+                    col = c_f1 if i == 0 else c_f2
+                    t1, t2 = vencedores_s[i], vencedores_s[i+1]
+                    opc = [t1, t2]
+                    p_idx = i // 2
+                    def_idx = opc.index(sel_fin_salvas[p_idx]) if p_idx < len(sel_fin_salvas) and sel_fin_salvas[p_idx] in opc else 0
+                    venc = col.selectbox(f"Mata Semi {p_idx+1}: {t1} x {t2}", opc, index=def_idx, key=f"gab_f_{i}")
+                    vencedores_f.append(venc)
+
+            if len(vencedores_f) == 2:
+                st.write("---")
+                st.write("#### 🏆 Bloco 5: O Grande Campeão Real")
+                opc_camp = [vencedores_f[0], vencedores_f[1]]
+                def_idx = opc_camp.index(g_c.get('campeao')) if g_c.get('campeao') in opc_camp else 0
+                camp_real = st.selectbox(f"Vencedor do Título: {vencedores_f[0]} x {vencedores_f[1]}", opc_camp, index=def_idx, key=f"gab_camp_final")
+                
+            st.write("")
+            if st.button("💾 Gravar Realidade da Árvore de Gabarito", use_container_width=True, type="primary"):
+                dados_g_chave = {
+                    "id": 1, 
+                    "oitavas": ",".join(oit), 
+                    "quartas": ",".join(vencedores_q) if len(vencedores_q)==8 else "",
+                    "semis": ",".join(vencedores_s) if len(vencedores_s)==4 else "", 
+                    "finalistas": ",".join(vencedores_f) if len(vencedores_f)==2 else "", 
+                    "campeao": camp_real
+                }
+                if gab_c_db: supabase.table("gabarito_chave").update(dados_g_chave).eq("id", 1).execute()
+                else: supabase.table("gabarito_chave").insert(dados_g_chave).execute()
+                st.success("Gabarito real da árvore de chaveamento atualizado de ponta a ponta!")
+                st.rerun()
+
+        # TAB 6: CONFIGS & EDITOR MANUAL DE JOGOS (NA MÃO E POR GRUPO)
         with sa6:
-            st.subheader("Travas e Configurações Master")
-            nova_r = st.text_input("Fase em Destaque", value=fase_ativa)
+            st.subheader("Configurações Globais do Sistema")
+            nova_r = st.text_input("Fase em Destaque Geral do Site", value=fase_ativa)
             switch_g = st.toggle("Liberar Palpites: Fase de Grupos", value=liberado_grupos)
             switch_m = st.toggle("Liberar Palpites: Mata-Mata", value=liberado_mata)
             switch_bc = st.toggle("Liberar Bônus 2: Chave Final (Pós-Grupos)", value=liberado_chave_bonus)
-            st.divider()
-            st.write("🔧 **Criação Direta de Ligas (Superadmin)**")
-            with st.form("form_criar_tenant_master"):
-                nome_b = st.text_input("Nome da Liga/Tenant")
+            
+            if st.button("💾 Salvar Configurações de Trava Master", use_container_width=True):
+                supabase.table("configuracoes_copa").update({
+                    "fase_ativa": nova_r, "palpites_grupos_liberados": switch_g, 
+                    "palpites_matamata_liberados": switch_m, "bonus_chave_liberado": switch_bc
+                }).eq("id", 1).execute()
+                st.success("Travas globais aplicadas com sucesso!"); st.rerun()
+                
+            st.write("---")
+            st.subheader("✏️ Editor Manual de Confrontos (Alterar Horários, Nomes e Dados na Mão)")
+            
+            todos_jogos_edicao = buscar_dados_paginados("jogos_copa", "*")
+            fases_unicas_edicao = sorted(list(set(j['fase'] for j in todos_jogos_edicao if j.get('fase'))))
+            fase_editor_sel = st.selectbox("Selecione a Fase/Grupo do confronto que deseja alterar:", fases_unicas_edicao, key="sb_fase_editor")
+            
+            jogos_filtrados_editor = [j for j in todos_jogos_edicao if j['fase'] == fase_editor_sel]
+            mapa_opcoes_editor = {f"ID: {j['id']} | {j['time_casa']} x {j['time_fora']}": j for j in jogos_filtrados_editor}
+            
+            if not mapa_opcoes_editor: st.info("Nenhum confronto nesta chave.")
+            else:
+                confronto_editor_sel = st.selectbox("Escolha exatamente qual partida deseja editar na mão:", list(mapa_opcoes_editor.keys()))
+                jogo_alvo_edicao = mapa_opcoes_editor[confronto_editor_sel]
+                
+                with st.form(f"form_edicao_estrita_{jogo_alvo_edicao['id']}"):
+                    st.write(f"⚙️ **Editando Partida ID: {jogo_alvo_edicao['id']}**")
+                    col_e1, col_e2 = st.columns(2)
+                    edit_casa = col_e1.selectbox("Substituir Time Casa", TIMES_COPA, index=TIMES_COPA.index(jogo_alvo_edicao['time_casa']) if jogo_alvo_edicao['time_casa'] in TIMES_COPA else 0)
+                    edit_fora = col_e2.selectbox("Substituir Time Fora", TIMES_COPA, index=TIMES_COPA.index(jogo_alvo_edicao['time_fora']) if job_alvo_edicao['time_fora'] in TIMES_COPA else 0)
+                    
+                    hf_atual = converter_para_br(jogo_alvo_edicao['horario_fechamento'])
+                    hj_atual = hf_atual + timedelta(minutes=30)
+                    
+                    col_e3, col_e4 = st.columns(2)
+                    edit_data = col_e3.date_input("Nova Data do Jogo", hj_atual.date())
+                    edit_hora = col_e4.time_input("Novo Horário do Jogo (Fuso BR)", hj_atual.time())
+                    
+                    edit_confirmado = st.checkbox("Times Confirmados (Fica visível para a galera palpitar)", value=jogo_alvo_edicao.get('times_confirmados', True))
+                    
+                    if st.form_submit_button("💾 Aplicar Modificações na Mão", use_container_width=True):
+                        dt_comb_edit = datetime.combine(edit_data, edit_hora)
+                        dt_fechamento_edit = fuso_br.localize(dt_comb_edit) - timedelta(minutes=30)
+                        
+                        supabase.table("jogos_copa").update({
+                            "time_casa": edit_casa, "time_fora": edit_fora,
+                            "horario_fechamento": dt_fechamento_edit.isoformat(),
+                            "times_confirmados": edit_confirmado
+                        }).eq("id", jogo_alvo_edicao['id']).execute()
+                        st.success("Dados do confronto sobrescritos com sucesso no Supabase!"); st.rerun()
+                        
+            st.write("---")
+            st.write("🔧 **Criação Direta de Ligas (Tenants)**")
+            with st.form("form_criar_tenant_master_final"):
+                nome_b = st.text_input("Nome da Liga/Tenant Corporativo")
                 admin_b = st.text_input("E-mail do Administrador").lower().strip()
-                submit_liga = st.form_submit_button("Criar Liga Corporativa", use_container_width=True)
-                if submit_liga and nome_b and admin_b:
-                    if not supabase.table("usuarios").select("email").eq("email", admin_b).execute().data: supabase.table("usuarios").insert({"email": admin_b, "nome": "Aguardando..."}).execute()
+                if st.form_submit_button("Criar Liga", use_container_width=True) and nome_b and admin_b:
+                    if not supabase.table("usuarios").select("email").eq("email", admin_b).execute().data: 
+                        supabase.table("usuarios").insert({"email": admin_b, "nome": "Aguardando..."}).execute()
                     novo_b = supabase.table("boloes").insert({"nome": nome_b}).execute().data[0]
                     supabase.table("membros_bolao").insert({"id_bolao": novo_b['id'], "email_usuario": admin_b, "is_admin": True}).execute()
-                    st.success(f"Liga '{nome_b}' criada!"); st.rerun()
-
-            if st.button("💾 Salvar Configurações de Trava", use_container_width=True):
-                supabase.table("configuracoes_copa").update({"fase_ativa": nova_r, "palpites_grupos_liberados": switch_g, "palpites_matamata_liberados": switch_m, "bonus_chave_liberado": switch_bc}).eq("id", 1).execute()
-                st.success("Configurações aplicadas!"); st.rerun()
+                    st.success(f"Liga '{nome_b}' ativada com sucesso!"); st.rerun()
