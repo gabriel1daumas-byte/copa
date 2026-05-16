@@ -201,7 +201,7 @@ if not st.session_state.logado:
                         st.session_state.update(logado=True, email_usuario=email_cad, nome_usuario=nome_cad, is_superadmin=u.get('is_superadmin', False))
                         st.rerun()
                 else:
-                    supabase.table("usuarios").insert({"email": email_cad, "nome": nome_cad, "senha": senha_cad}).execute()
+                    supabase.table("usuarios").insert({"email": email_cad, "nome": name_cad, "senha": senha_cad}).execute()
                     st.success("Conta criada com sucesso!")
                     st.session_state.update(logado=True, email_usuario=email_cad, nome_usuario=nome_cad, is_superadmin=False)
                     st.rerun()
@@ -625,7 +625,7 @@ else:
                         opcoes = [t1, t2]
                         pos_lista = i // 2
                         idx_p = opcoes.index(sel_fin[pos_lista]) if pos_lista < len(sel_fin) and sel_fin[pos_lista] in opcoes else 0
-                        venc = st.selectbox(f"Semi {pos_lista+1}: {t1} x {t2}", opcoes, index=idx_p, key=f"b2_r4_{i}", disabled=status_trava_componente)
+                        venc = st.selectbox(f"Semi {pos_lista+1}: {t1} x {t2}", opc if 'opc' in locals() else opcoes, index=idx_p, key=f"b2_r4_{i}", disabled=status_trava_componente)
                         vencedores_r4.append(venc)
 
                 st.write("---")
@@ -640,7 +640,7 @@ else:
                     if st.button("💾 Gravar Árvore do Mata-Mata Completa", use_container_width=True, type="primary"):
                         dados_chave = {
                             "oitavas": ",".join(vencedores_r32), "quartas": ",".join(vencedores_r16),
-                            "semis": ",".join(vencedores_r8), "finalistas": ",".join(vencedores_r4),
+                            "semis": ",".join(vencedores_r4 if 'vencedores_r4' in locals() else vencedores_r8), "finalistas": ",".join(vencedores_r4),
                             "campeao": campeao_escolhido
                         }
                         if b2_salvo: supabase.table("bonus_chave").update(dados_chave).eq("email_usuario", st.session_state.email_usuario).execute()
@@ -917,8 +917,13 @@ else:
                 if not jogos_filtrados_placar: st.success("🎉 Todos os jogos iniciados até o momento já possuem placar oficial cadastrado!")
             else:
                 lista_fases_existentes = sorted(list(set(j['fase'] for j in todos_jogos_ativos if j.get('fase'))))
-                fase_placar_sel = st.selectbox("Escolha a Fase/Grupo:", lista_fases_existentes, key="sb_fase_placar_master")
+                fase_placar_sel = st.selectbox("Escolha a Fase:", lista_fases_existentes, key="sb_fase_placar_master")
                 jogos_filtrados_placar = [j for j in todos_jogos_ativos if j['fase'] == fase_placar_sel and j.get('times_confirmados')]
+                
+                if fase_placar_sel == "Fase de Grupos":
+                    grupo_placar_sel = st.selectbox("Escolha o Grupo:", ["Todos"] + sorted(list(GRUPOS_COPA.keys())), key="sb_grupo_placar_master")
+                    if grupo_placar_sel != "Todos":
+                        jogos_filtrados_placar = [j for j in jogos_filtrados_placar if get_grupo(j['time_casa']) == grupo_placar_sel]
             
             if jogos_filtrados_placar:
                 for j in ordenar_jogos(jogos_filtrados_placar):
@@ -955,79 +960,49 @@ else:
                         else: supabase.table("gabarito_grupos").insert(dados).execute()
                     st.success("Gabaritos oficiais dos grupos gravados com sucesso!")
 
+        # --- 🛠️ REESTRUTURAÇÃO COMPLETA DA ABA 5: GABARITO DA CHAVE POR FASE REAL ---
         with sa5:
             st.subheader("Tracks: Gabarito Oficial da Chave Eliminatória")
-            gab_c_db = supabase.table("gabarito_chave").select("*").eq("id", 1).execute().data
-            g_c = gab_c_db[0] if gab_c_db else {}
-            def parse_g(campo): return g_c.get(campo, '').split(',') if g_c.get(campo) else []
-
-            st.write("#### Bloco 1: Quem passou da Rodada de 32 (Lista das 16 Oitavas Reais)")
-            oit = st.multiselect("Selecione os 16 vencedores dos 32-avos:", TIMES_COPA, default=parse_g('oitavas'), max_selections=16, key="gab_oitavas_multi")
+            st.caption("Selecione a fase para definir os classificados reais com base nos confrontos salvos no banco de dados.")
             
-            vencedores_q, vencedores_s, vencedores_f, camp_real = [], [], [], ""
+            fase_gab_sel = st.selectbox("Fase do Gabarito para lançamento:", FASES_MATA_MATA, key="sb_fase_gab_chave")
             
-            if len(oit) == 16:
-                st.write("---")
-                st.write("#### Bloco 2: Vencedores das Oitavas -> Avançam para as Quartas (De 2 em 2)")
-                sel_qua_salvas = parse_g('quartas')
-                c_q1, c_q2 = st.columns(2)
-                for i in range(0, 16, 2):
-                    col = c_q1 if i < 8 else c_q2
-                    t1, t2 = oit[i], oit[i+1]
-                    opc = [t1, t2]
-                    p_idx = i // 2
-                    def_idx = opc.index(sel_qua_salvas[p_idx]) if p_idx < len(sel_qua_salvas) and sel_qua_salvas[p_idx] in opc else 0
-                    venc = col.selectbox(f"Mata Oitavas {p_idx+1}: {t1} x {t2}", opc, index=def_idx, key=f"gab_q_{i}")
-                    vencedores_q.append(venc)
-                    
-            if len(vencedores_q) == 8:
-                st.write("---")
-                st.write("#### Bloco 3: Vencedores das Quartas -> Avançam para as Semifinais (De 2 em 2)")
-                sel_sem_salvas = parse_g('semis')
-                c_s1, c_s2 = st.columns(2)
-                for i in range(0, 8, 2):
-                    col = c_s1 if i < 4 else c_s2
-                    t1, t2 = vencedores_q[i], vencedores_q[i+1]
-                    opc = [t1, t2]
-                    p_idx = i // 2
-                    def_idx = opc.index(sel_sem_salvas[p_idx]) if p_idx < len(sel_sem_salvas) and sel_sem_salvas[p_idx] in opc else 0
-                    venc = col.selectbox(f"Mata Quartas {p_idx+1}: {t1} x {t2}", opc, index=def_idx, key=f"gab_s_{i}")
-                    vencedores_s.append(venc)
-
-            if len(vencedores_s) == 4:
-                st.write("---")
-                st.write("#### Bloco 4: Vencedores das Semis -> Os 2 Finalistas Reais")
-                sel_fin_salvas = parse_g('finalistas')
-                c_f1, c_f2 = st.columns(2)
-                for i in range(0, 4, 2):
-                    col = c_f1 if i == 0 else c_f2
-                    t1, t2 = vencedores_s[i], vencedores_s[i+1]
-                    opc = [t1, t2]
-                    p_idx = i // 2
-                    def_idx = opc.index(sel_fin_salvas[p_idx]) if p_idx < len(sel_fin_salvas) and sel_fin_salvas[p_idx] in opc else 0
-                    venc = col.selectbox(f"Mata Semi {p_idx+1}: {t1} x {t2}", opc, index=def_idx, key=f"gab_f_{i}")
-                    vencedores_f.append(venc)
-
-            if len(vencedores_f) == 2:
-                st.write("---")
-                st.write("#### 🏆 Bloco 5: O Grande Campeão Real")
-                opc_camp = [vencedores_f[0], vencedores_f[1]]
-                def_idx = opc_camp.index(g_c.get('campeao')) if g_c.get('campeao') in opc_camp else 0
-                camp_real = st.selectbox(f"Vencedor do Título: {vencedores_f[0]} x {vencedores_f[1]}", opc_camp, index=def_idx, key=f"gab_camp_final")
+            mapa_fases_regras = {
+                "Trinta-e-dois-avos de Final": {"col": "oitavas", "qtd": 16},
+                "Oitavas de Final": {"col": "quartas", "qtd": 8},
+                "Quartas de Final": {"col": "semis", "qtd": 4},
+                "Semifinais": {"col": "finalistas", "qtd": 2},
+                "Final": {"col": "campeao", "qtd": 1}
+            }
+            
+            regra = mapa_fases_regras[fase_gab_sel]
+            jogos_fase_gab = buscar_dados_paginados("jogos_copa", "*", "fase", fase_gab_sel)
+            
+            if len(jogos_fase_gab) != regra["qtd"]:
+                st.error(f"🔒 Lançamento Bloqueado! Esta fase exige que todos os {regra['qtd']} jogos estejam devidamente cadastrados no sistema. (Cadastrados atuais: {len(jogos_fase_gab)} / {regra['qtd']})")
+            else:
+                jogos_fase_gab_ord = sorted(jogos_fase_gab, key=lambda x: x['id'])
                 
-            st.write("")
-            if st.button("💾 Gravar Realidade da Árvore de Gabarito", use_container_width=True, type="primary"):
-                dados_g_chave = {
-                    "id": 1, 
-                    "oitavas": ",".join(oit), 
-                    "quartas": ",".join(vencedores_q) if len(vencedores_q)==8 else "",
-                    "semis": ",".join(vencedores_s) if len(vencedores_s)==4 else "", 
-                    "finalistas": ",".join(vencedores_f) if len(vencedores_f)==2 else "", 
-                    "campeao": camp_real
-                }
-                if gab_c_db: supabase.table("gabarito_chave").update(dados_g_chave).eq("id", 1).execute()
-                else: supabase.table("gabarito_chave").insert(dados_g_chave).execute()
-                st.success("Gabarito real da árvore de chaveamento atualizado!"); st.rerun()
+                gab_c_db = supabase.table("gabarito_chave").select("*").eq("id", 1).execute().data
+                g_c = gab_c_db[0] if gab_c_db else {}
+                valores_salvos = g_c.get(regra["col"], "").split(",") if g_c.get(regra["col"]) else []
+                
+                with st.form(f"form_gabarito_fase_{fase_gab_sel}"):
+                    vencedores_fase = []
+                    for idx_j, j in enumerate(jogos_fase_gab_ord):
+                        opc = [j['time_casa'], j['time_fora']]
+                        def_idx = opc.index(valores_salvos[idx_j]) if idx_j < len(valores_salvos) and valores_salvos[idx_j] in opc else 0
+                        venc = st.selectbox(f"Vencedor Real do Jogo {idx_j+1}: {j['time_casa']} x {j['time_fora']}", opc, index=def_idx, key=f"sel_gab_venc_{j['id']}")
+                        vencedores_fase.append(venc)
+                        
+                    if st.form_submit_button(f"💾 Gravar Gabarito Oficial de {fase_gab_sel}", use_container_width=True):
+                        str_vencedores = ",".join(vencedores_fase)
+                        dados_g_chave = { "id": 1, regra["col"]: str_vencedores }
+                        if gab_c_db:
+                            supabase.table("gabarito_chave").update({regra["col"]: str_vencedores}).eq("id", 1).execute()
+                        else:
+                            supabase.table("gabarito_chave").insert(dados_g_chave).execute()
+                        st.success(f"Gabarito oficial da fase '{fase_gab_sel}' gravado e atualizado de ponta a ponta!"); st.rerun()
 
         with sa6:
             st.subheader("Travas e Configurações Master")
