@@ -69,6 +69,69 @@ def buscar_dados_paginados(tabela, colunas="*", filtro_col=None, filtro_val=None
         inicio += tamanho_lote
     return dados
 
+# --- FÓRMULAS DE PONTUAÇÃO CONTRA FALTA DE PALPITES ---
+def calcular_pontos_grupos(p_c, p_f, r_c, r_f):
+    if pd.isna(r_c) or pd.isna(r_f) or pd.isna(p_c) or pd.isna(p_f): return 0
+    if p_c == r_c and p_f == r_f: return 2
+    res_p = 'C' if p_c > p_f else ('F' if p_f > p_c else 'E')
+    res_r = 'C' if r_c > r_f else ('F' if r_f > r_c else 'E')
+    if res_p == res_r: return 1
+    return 0
+
+def calcular_pontos_matamata(p_c, p_f, p_class, r_c, r_f, r_class):
+    if pd.isna(r_c) or pd.isna(r_f) or pd.isna(p_c) or pd.isna(p_f) or pd.isna(r_class): return 0
+    res_p = 'C' if p_c > p_f else ('F' if p_f > p_c else 'E')
+    res_r = 'C' if r_c > r_f else ('F' if r_f > r_c else 'E')
+    
+    acertou_placar = (p_c == r_c and p_f == r_f)
+    acertou_classificado = (str(p_class).strip() == str(r_class).strip())
+    
+    if acertou_placar and acertou_classificado: return 4
+    
+    pontos = 0
+    if acertou_classificado: pontos += 2
+    if res_p == res_r: pontos += 1
+    return pontos
+
+def calcular_pontos_bonus1(meus_bonus, gabaritos):
+    pontos = 0
+    for b in meus_bonus:
+        g = gabaritos.get(b['grupo'])
+        if g:
+            acertos = 0
+            if b['pos1'] == g['pos1']: acertos += 1
+            if b['pos2'] == g['pos2']: acertos += 1
+            if b['pos3'] == g['pos3']: acertos += 1
+            if b['pos4'] == g['pos4']: acertos += 1
+            pontos += acertos
+            if acertos == 4: pontos += 2 
+    return pontos
+
+def calcular_pontos_bonus2(meu_b2, gab_b2):
+    if not meu_b2 or not gab_b2: return 0
+    pontos = 0
+    m_oit = meu_b2.get('oitavas','').split(',') if meu_b2.get('oitavas') else []
+    g_oit = gab_b2.get('oitavas','').split(',') if gab_b2.get('oitavas') else []
+    pontos += len(set(m_oit) & set(g_oit)) * 1
+
+    m_qua = meu_b2.get('quartas','').split(',') if meu_b2.get('quartas') else []
+    g_qua = gab_b2.get('quartas','').split(',') if gab_b2.get('quartas') else []
+    pontos += len(set(m_qua) & set(g_qua)) * 2
+
+    m_sem = meu_b2.get('semis','').split(',') if meu_b2.get('semis') else []
+    g_sem = gab_b2.get('semis','').split(',') if gab_b2.get('semis') else []
+    pontos += len(set(m_sem) & set(g_sem)) * 3
+
+    m_fin = meu_b2.get('finalistas','').split(',') if meu_b2.get('finalistas') else []
+    g_fin = gab_b2.get('finalistas','').split(',') if gab_b2.get('finalistas') else []
+    pontos += len(set(m_fin) & set(g_fin)) * 5
+
+    m_camp = meu_b2.get('campeao','')
+    g_camp = gab_b2.get('campeao','')
+    if m_camp and g_camp and m_camp == g_camp: pontos += 10
+        
+    return pontos
+
 # --- SESSÃO ---
 if "logado" not in st.session_state:
     st.session_state.update(logado=False, email_usuario="", nome_usuario="", is_superadmin=False, bolao_ativo_id=None, bolao_ativo_nome=None, is_admin_bolao_ativo=False)
@@ -109,7 +172,7 @@ if not st.session_state.logado:
                     u = res.data[0]
                     if u.get("senha"): st.warning("Este e-mail já possui conta ativa. Use a aba de Login.")
                     else:
-                        supabase.table("usuarios").update({"senha": senha_cad, "nome": name_cad}).eq("email", email_cad).execute()
+                        supabase.table("usuarios").update({"senha": senha_cad, "nome": nome_cad}).eq("email", email_cad).execute()
                         st.success("Sua conta foi ativada com sucesso!")
                         st.session_state.update(logado=True, email_usuario=email_cad, nome_usuario=nome_cad, is_superadmin=u.get('is_superadmin', False))
                         st.rerun()
@@ -120,7 +183,7 @@ if not st.session_state.logado:
                     st.rerun()
 
 # ==========================================
-# ECRÃ 2: LOBBY DE LIGAS UNIFICADO 
+# ECRÃ 2: LOBBY DE LIGAS UNIFICADO (CORRIGIDO PARA ADMS)
 # ==========================================
 elif st.session_state.bolao_ativo_id is None:
     st.title(f"👋 Olá, {st.session_state.nome_usuario}!")
@@ -155,7 +218,7 @@ elif st.session_state.bolao_ativo_id is None:
         st.session_state.clear(); st.rerun()
 
 # ==========================================
-# ECRÃ 3: DENTRO DO BOLÃO
+# ECRÃ 3: DENTRO DO BOLÃO / AMBIENTE OPERACIONAL
 # ==========================================
 else:
     nome_exibicao_sidebar = st.session_state.bolao_ativo_nome
@@ -179,7 +242,7 @@ else:
     liberado_grupos = config_global.get('palpites_grupos_liberados', True)
     liberado_mata = config_global.get('palpites_matamata_liberados', False)
 
-    # --- 1. FAZER PALPITES DE JOGOS (UX CORRIGIDA) ---
+    # --- 1. FAZER PALPITES DE JOGOS ---
     if menu == "Fazer Palpites de Jogos":
         st.title(f"Palpites - {fase_ativa}")
         jogos_db = buscar_dados_paginados("jogos_copa", "*", "fase", fase_ativa)
@@ -195,7 +258,7 @@ else:
                     if time_nome in times: return grp
                 return "Mata-Mata"
             
-            # Filtro estrito de 30 minutos antes do jogo
+            # Filtro considerando as travas globais e o horário estrito de 30min
             jogos_abertos = []
             for j in jogos:
                 if not j.get('times_confirmados'): continue
@@ -208,7 +271,7 @@ else:
             else:
                 aba_pendentes, aba_grupos, aba_mata = st.tabs(["🚨 Faltam Palpitar", "⚽ Fase de Grupos", "🔥 Mata-Mata"])
 
-                # --- ABA PENDENTES (APENAS CHECKLIST INFORMATIVO - SEM ENTRADA DE DADOS) ---
+                # --- ABA PENDENTES (CHECKLIST INFORMATIVO PURAMENTE TEXTUAL) ---
                 with aba_pendentes:
                     jogos_faltando = [j for j in jogos_abertos if str(j['id']) not in mapa_meus]
                     if not jogos_faltando: 
@@ -220,10 +283,12 @@ else:
                         
                         for j in jogos_faltando:
                             tipo_fase = f"Grupo {get_grupo(j['time_casa'])}" if not j.get('is_mata_mata') else "Mata-Mata"
-                            # Renderização limpa, puramente textual/estilizada para consulta rápida
-                            st.info(f"⏳ **{j['time_casa']} x {j['time_fora']}** — *({tipo_fase})*")
+                            hf_br = converter_para_br(j['horario_fechamento'])
+                            
+                            st.info(f"⏳ **{j['time_casa']} x {j['time_fora']}** — *({tipo_fase})*\n\n"
+                                    f"⏰ **Fecha em:** {hf_br.strftime('%d/%m às %H:%M')}")
 
-                # --- ABA GRUPOS (COMBOBOX + BOTÃO EXCLUSIVO POR GRUPO) ---
+                # --- ABA GRUPOS (COMBOBOX + FILTRO POR GRUPO EXCLUSIVO) ---
                 with aba_grupos:
                     jogos_g = [j for j in jogos_abertos if not j.get('is_mata_mata')]
                     if not jogos_g: st.info("Nenhum jogo da fase de grupos aberto.")
@@ -243,7 +308,13 @@ else:
                                 for j in jogos_deste:
                                     p_ant = mapa_meus.get(str(j['id']), {})
                                     gc, gf = p_ant.get('gols_casa', 0), p_ant.get('gols_fora', 0)
+                                    
+                                    hf_br = converter_para_br(j['horario_fechamento'])
+                                    hj_br = hf_br + timedelta(minutes=30)
+                                    
                                     st.write(f"**{j['time_casa']} x {j['time_fora']}**")
+                                    st.caption(f"📅 **Jogo:** {hj_br.strftime('%d/%m às %H:%M')} | 🔒 **Limite para chutar:** {hf_br.strftime('%H:%M')}")
+                                    
                                     c1, c2, c3 = st.columns([3, 1, 3])
                                     v_casa = c1.number_input(f"Gols {j['time_casa']}", min_value=0, step=1, value=gc, key=f"g_c_{j['id']}")
                                     c2.markdown("<h3 style='text-align: center; padding-top: 25px;'>X</h3>", unsafe_allow_html=True)
@@ -270,7 +341,13 @@ else:
                                 p_ant = mapa_meus.get(str(j['id']), {})
                                 gc, gf = p_ant.get('gols_casa', 0), p_ant.get('gols_fora', 0)
                                 cl = p_ant.get('classificado', j['time_casa'])
-                                st.write(f"**{j['time_casa']} x {j['time_fora']}**")
+                                
+                                hf_br = converter_para_br(j['horario_fechamento'])
+                                hj_br = hf_br + timedelta(minutes=30)
+                                
+                                st.write(f"### {j['time_casa']} x {j['time_fora']}")
+                                st.caption(f"📅 **Jogo:** {hj_br.strftime('%d/%m às %H:%M')} | 🔒 **Limite para chutar:** {hf_br.strftime('%H:%M')}")
+                                
                                 c1, c2, c3 = st.columns([3, 1, 3])
                                 v_casa = c1.number_input(f"Gols {j['time_casa']}", min_value=0, step=1, value=gc, key=f"m_c_{j['id']}")
                                 c2.markdown("<h3 style='text-align: center; padding-top: 25px;'>X</h3>", unsafe_allow_html=True)
