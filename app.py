@@ -201,10 +201,8 @@ if not st.session_state.logado:
                         st.session_state.update(logado=True, email_usuario=email_cad, nome_usuario=nome_cad, is_superadmin=u.get('is_superadmin', False))
                         st.rerun()
                 else:
-                    supabase.table("usuarios").insert({"email": email_cad, "nome": nome_cad, "senha": senha_cad}).execute()
-                    st.success("Conta criada com sucesso!")
-                    st.session_state.update(logado=True, email_usuario=email_cad, nome_usuario=nome_cad, is_superadmin=False)
-                    st.rerun()
+                    # CORREÇÃO: Impede a inserção de usuários não autorizados
+                    st.error("⚠️ Seu e-mail não possui um pré-cadastro ativo no sistema. Peça ao Administrador da sua liga corporativa para lhe autorizar antes de criar a conta!")
 
 # ==========================================
 # ECRÃ 2: LOBBY DE LIGAS UNIFICADO
@@ -480,7 +478,6 @@ else:
                 
                 if grupos_disponiveis:
                     grupo_sel = st.selectbox("🎯 Escolha o Bloco para espiar os rivais:", grupos_disponiveis, key="sb_grid_galera_view")
-                    # CORREÇÃO DEFINITIVA DA SINTAXE QUEBRADA: Aponta limpo para a variável grupo_sel
                     jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
                     
                     all_palpites = buscar_dados_paginados("palpites_copa", "*", "email_usuario", emails)
@@ -508,10 +505,22 @@ else:
                                 st.warning("🔒 Palpites ocultos. A tabela de apostas da galera será revelada automaticamente faltando 29 minutos para o início do jogo!")
                             st.write("---")
 
-    # --- 2. BÔNUS 1: VIDENTES COM SWAP DINÂMICO ---
+    # --- 2. BÔNUS 1: VIDENTES COM SWAP DINÂMICO E TRAVA AUTOMÁTICA ---
     elif menu == "Bônus 1: Videntes dos Grupos":
         st.title("🔮 Videntes da Fase de Grupos")
         st.caption("Monte a sua classificação. Se escolher uma seleção que já está em outra posição, o sistema inverterá as duas posições automaticamente!")
+        
+        # LÓGICA DE TRAVA: Impede edição após o início do primeiro jogo da Copa
+        jogos_grupos_b1 = buscar_dados_paginados("jogos_copa", "horario_fechamento", "fase", "Fase de Grupos")
+        passou_do_prazo_b1 = False
+        
+        if jogos_grupos_b1:
+            fechamentos = [converter_para_br(j['horario_fechamento']) for j in jogos_grupos_b1 if j.get('horario_fechamento')]
+            if fechamentos and agora >= min(fechamentos):
+                passou_do_prazo_b1 = True
+
+        if passou_do_prazo_b1:
+            st.error("🔒 Mercado Fechado! O primeiro jogo da Copa do Mundo já iniciou, impossibilitando novos envios ou alterações nas previsões dos grupos.")
         
         existentes = buscar_dados_paginados("bonus_grupos", "*", "email_usuario", st.session_state.email_usuario)
         mapa_b = {b['grupo']: b for b in existentes}
@@ -529,25 +538,26 @@ else:
             current_teams = st.session_state[f"arr_{grp}"]
             c1, c2, c3, c4 = st.columns(4)
             
-            c1.selectbox("1º Lugar", times, index=times.index(current_teams[0]), key=f"sb_g{grp}_0", on_change=check_swap, args=(grp, 0))
-            c2.selectbox("2º Lugar", times, index=times.index(current_teams[1]), key=f"sb_g{grp}_1", on_change=check_swap, args=(grp, 1))
-            c3.selectbox("3º Lugar", times, index=times.index(current_teams[2]), key=f"sb_g{grp}_2", on_change=check_swap, args=(grp, 2))
-            c4.selectbox("4º Lugar", times, index=times.index(current_teams[3]), key=f"sb_g{grp}_3", on_change=check_swap, args=(grp, 3))
+            c1.selectbox("1º Lugar", times, index=times.index(current_teams[0]), key=f"sb_g{grp}_0", on_change=check_swap, args=(grp, 0), disabled=passou_do_prazo_b1)
+            c2.selectbox("2º Lugar", times, index=times.index(current_teams[1]), key=f"sb_g{grp}_1", on_change=check_swap, args=(grp, 1), disabled=passou_do_prazo_b1)
+            c3.selectbox("3º Lugar", times, index=times.index(current_teams[2]), key=f"sb_g{grp}_2", on_change=check_swap, args=(grp, 2), disabled=passou_do_prazo_b1)
+            c4.selectbox("4º Lugar", times, index=times.index(current_teams[3]), key=f"sb_g{grp}_3", on_change=check_swap, args=(grp, 3), disabled=passou_do_prazo_b1)
             st.divider()
             
-        if st.button("💾 Salvar Previsão dos Grupos", use_container_width=True, type="primary"):
-            for grp in GRUPOS_COPA.keys():
-                final_teams = st.session_state[f"arr_{grp}"]
-                dados = {
-                    "email_usuario": st.session_state.email_usuario, "grupo": grp,
-                    "pos1": final_teams[0], "pos2": final_teams[1], "pos3": final_teams[2], "pos4": final_teams[3]
-                }
-                if grp in mapa_b:
-                    supabase.table("bonus_grupos").update(dados).eq("email_usuario", st.session_state.email_usuario).eq("grupo", grp).execute()
-                else:
-                    supabase.table("bonus_grupos").insert(dados).execute()
-            st.success("Todas as suas previsões de classificação foram salvas com sucesso!")
-            st.rerun()
+        if not passou_do_prazo_b1:
+            if st.button("💾 Salvar Previsão dos Grupos", use_container_width=True, type="primary"):
+                for grp in GRUPOS_COPA.keys():
+                    final_teams = st.session_state[f"arr_{grp}"]
+                    dados = {
+                        "email_usuario": st.session_state.email_usuario, "grupo": grp,
+                        "pos1": final_teams[0], "pos2": final_teams[1], "pos3": final_teams[2], "pos4": final_teams[3]
+                    }
+                    if grp in mapa_b:
+                        supabase.table("bonus_grupos").update(dados).eq("email_usuario", st.session_state.email_usuario).eq("grupo", grp).execute()
+                    else:
+                        supabase.table("bonus_grupos").insert(dados).execute()
+                st.success("Todas as suas previsões de classificação foram salvas com sucesso!")
+                st.rerun()
 
     # --- 3. BÔNUS 2: CHAVE FINAL ---
     elif menu == "Bônus 2: Chave Final":
@@ -910,7 +920,6 @@ else:
             else:
                 for j in ordenar_jogos(jogos_fase_existentes): st.text(f"ID: {j['id']} | {j['time_casa']} x {j['time_fora']} - Fechamento: {converter_para_br(j['horario_fechamento']).strftime('%d/%m %H:%M')}")
             
-        # --- INTERFACE DE LANÇAMENTO EXCLUSIVA TOTALMENTE ABERTA ---
         with sa3:
             st.subheader("⚽ Emissão de Resultados Reais da Copa")
             modo_placar = st.radio("Filtro de busca:", ["🚨 Placares Faltando (Jogos Iniciados Sem Resultado)", "🔍 Filtrar por Fase/Grupo Completo"], horizontal=True, key="rb_modo_placar_master")
@@ -943,7 +952,7 @@ else:
                     if is_salvo:
                         st.markdown(f"#### 🟢 **[SALVO]** {j['time_casa']} vs {j['time_fora']} — *({j['fase']})*")
                     else:
-                        st.markdown(f"#### 2017 🟡 **[PENDENTE]** {j['time_casa']} vs {j['time_fora']} — *({j['fase']})*")
+                        st.markdown(f"#### 🟡 **[PENDENTE]** {j['time_casa']} vs {j['time_fora']} — *({j['fase']})*")
                     
                     c_c1, c_c2, c_c3 = st.columns([2, 2, 2]) if not j.get('is_mata_mata') else st.columns([2, 2, 3])
                     
