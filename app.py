@@ -292,10 +292,9 @@ else:
     liberado_mata = config_global.get('palpites_matamata_liberados', False)
     liberado_chave_bonus = config_global.get('bonus_chave_liberado', False)
 
-    # --- 1. FAZER PALPITES DE JOGOS (MATA-MATA DESBLOQUEADO GLOBALMENTE) ---
+    # --- 1. FAZER PALPITES DE JOGOS ---
     if menu == "Fazer Palpites de Jogos":
         st.title(f"Palpites Disponíveis")
-        # CORREÇÃO: Puxa todos os jogos e faz o filtro dinamicamente na aplicação
         jogos_db = buscar_dados_paginados("jogos_copa", "*")
         if not jogos_db: st.info("Nenhum jogo cadastrado no sistema.")
         else:
@@ -408,7 +407,7 @@ else:
                                         supabase.table("palpites_copa").insert(dados).execute()
                                 st.success("Palpites do Mata-Mata salvos!"); st.rerun()
 
-    # --- 1B. ABA: MEUS PALPITES (CORRIGIDO: ABRE TODAS AS FASES SALVAS COESAMENTE) ---
+    # --- 1B. ABA: MEUS PALPITES ---
     elif menu == "Meus Palpites":
         st.title("📋 Meus Palpites Registrados")
         jogos_db = buscar_dados_paginados("jogos_copa", "*")
@@ -461,7 +460,7 @@ else:
                         else: st.markdown("⏳ *Aguardando encerramento e resultado oficial do confronto.*")
                         st.write("---")
 
-    # --- 1C. ABA: PALPITES DA GALERA (CORRIGIDO: PERMITE ESPIAR MATA-MATA) ---
+    # --- 1C. ABA: PALPITES DA GALERA ---
     elif menu == "Palpites da Galera":
         st.title("👥 Palpites de Todos os Participantes")
         membros = buscar_dados_paginados("membros_bolao", "email_usuario", "id_bolao", st.session_state.bolao_ativo_id)
@@ -481,7 +480,8 @@ else:
                 
                 if grupos_disponiveis:
                     grupo_sel = st.selectbox("🎯 Escolha o Bloco para espiar os rivais:", grupos_disponiveis, key="sb_grid_galera_view")
-                    jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == group_sel if 'group_sel' in locals() else get_grupo(j['time_casa']) == grupo_sel]
+                    # CORREÇÃO DEFINITIVA DA SINTAXE QUEBRADA: Aponta limpo para a variável grupo_sel
+                    jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
                     
                     all_palpites = buscar_dados_paginados("palpites_copa", "*", "email_usuario", emails)
                     mapa_palpites = {(p['id_jogo'], p['email_usuario']): p for p in all_palpites}
@@ -910,7 +910,7 @@ else:
             else:
                 for j in ordenar_jogos(jogos_fase_existentes): st.text(f"ID: {j['id']} | {j['time_casa']} x {j['time_fora']} - Fechamento: {converter_para_br(j['horario_fechamento']).strftime('%d/%m %H:%M')}")
             
-        # --- INTERFACE DE LANÇAMENTO EXCLUSIVA TOTALMENTE ABERTA (SEM EXPANDER E COM UX STATUS BADGES) ---
+        # --- INTERFACE DE LANÇAMENTO EXCLUSIVA TOTALMENTE ABERTA ---
         with sa3:
             st.subheader("⚽ Emissão de Resultados Reais da Copa")
             modo_placar = st.radio("Filtro de busca:", ["🚨 Placares Faltando (Jogos Iniciados Sem Resultado)", "🔍 Filtrar por Fase/Grupo Completo"], horizontal=True, key="rb_modo_placar_master")
