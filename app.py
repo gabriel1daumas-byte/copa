@@ -183,7 +183,7 @@ if not st.session_state.logado:
                     st.rerun()
 
 # ==========================================
-# ECRÃ 2: LOBBY DE LIGAS UNIFICADO (CORRIGIDO PARA ADMS)
+# ECRÃ 2: LOBBY DE LIGAS UNIFICADO (VINCULADO PARA ADMS)
 # ==========================================
 elif st.session_state.bolao_ativo_id is None:
     st.title(f"👋 Olá, {st.session_state.nome_usuario}!")
@@ -277,14 +277,13 @@ else:
                     if not jogos_faltando: 
                         st.success("🎉 Sensacional! Todos os seus palpites para os jogos liberados já foram registrados!")
                     else:
-                        st.error(f"⚠️ Atenção! Ainda faltam palpites para {len(jogos_faltando)} jogo(s) aberto(s).")
+                        st.error(f"⚠️ Até agora faltam palpites para {len(jogos_faltando)} jogo(s) aberto(s).")
                         st.caption("Navegue pelas abas 'Fase de Grupos' ou 'Mata-Mata' abaixo para preencher os confrontos listados:")
                         st.write("")
                         
                         for j in jogos_faltando:
                             tipo_fase = f"Grupo {get_grupo(j['time_casa'])}" if not j.get('is_mata_mata') else "Mata-Mata"
                             hf_br = converter_para_br(j['horario_fechamento'])
-                            
                             st.info(f"⏳ **{j['time_casa']} x {j['time_fora']}** — *({tipo_fase})*\n\n"
                                     f"⏰ **Fecha em:** {hf_br.strftime('%d/%m às %H:%M')}")
 
@@ -441,16 +440,20 @@ else:
                 df_comp = df_u.merge(df_j, how='cross').merge(df_p, left_on=['email', 'id'], right_on=['email_usuario', 'id_jogo'], how='left', suffixes=('_real', '_palp'))
                 
                 def calcular_pontos_linha(row):
-                    if pd.isna(row['gols_casa_real_real']) or pd.isna(row['gols_fora_real']) or pd.isna(row['gols_casa']) or pd.isna(row['gols_fora']): return 0
+                    if pd.isna(row['gols_casa_real']) or pd.isna(row['gols_fora_real']) or pd.isna(row['gols_casa']) or pd.isna(row['gols_fora']): return 0
                     if row['is_mata_mata']:
                         if pd.isna(row['classificado_real']) or pd.isna(row['classificado']): return 0
-                        if row['gols_casa'] == row['gols_casa_real_real'] and row['gols_fora'] == row['gols_fora_real'] and str(row['classificado']).strip() == str(row['classificado_real']).strip(): return 4
+                        if row['gols_casa'] == row['gols_casa_real'] and row['gols_fora'] == row['gols_fora_real'] and str(row['classificado']).strip() == str(row['classificado_real']).strip(): return 4
                         p = 2 if str(row['classificado']).strip() == str(row['classificado_real']).strip() else 0
-                        if ('C' if row['gols_casa'] > row['gols_fora'] else ('F' if row['gols_fora'] > row['gols_casa'] else 'E')) == ('C' if row['gols_casa_real_real'] > row['gols_fora_real'] else ('F' if row['gols_fora_real'] > row['gols_casa_real_real'] else 'E')): p += 1
+                        res_p = 'C' if row['gols_casa'] > row['gols_fora'] else ('F' if row['gols_fora'] > row['gols_casa'] else 'E')
+                        res_r = 'C' if row['gols_casa_real'] > row['gols_fora_real'] else ('F' if row['gols_fora_real'] > row['gols_casa_real'] else 'E')
+                        if res_p == res_r: p += 1
                         return p
                     else:
-                        if row['gols_casa'] == row['gols_casa_real_real'] and row['gols_fora'] == row['gols_fora_real']: return 2
-                        return 1 if ('C' if row['gols_casa'] > row['gols_fora'] else ('F' if row['gols_fora'] > row['gols_casa'] else 'E')) == ('C' if row['gols_casa_real_real'] > row['gols_fora_real'] else ('F' if row['gols_fora_real'] > row['gols_casa_real_real'] else 'E')) else 0
+                        if row['gols_casa'] == row['gols_casa_real'] and row['gols_fora'] == row['gols_fora_real']: return 2
+                        res_p = 'C' if row['gols_casa'] > row['gols_fora'] else ('F' if row['gols_fora'] > row['gols_casa'] else 'E')
+                        res_r = 'C' if row['gols_casa_real'] > row['gols_fora_real'] else ('F' if row['gols_fora_real'] > row['gols_casa_real'] else 'E')
+                        return 1 if res_p == res_r else 0
 
                 df_comp['pts'] = df_comp.apply(calcular_pontos_linha, axis=1)
                 for em, pts in df_comp.groupby('email')['pts'].sum().to_dict().items(): pontos_por_usuario[em]["Jogos"] = pts
