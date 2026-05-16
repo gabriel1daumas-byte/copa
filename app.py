@@ -143,7 +143,7 @@ def calcular_pontos_bonus2(meu_b2, gab_b2):
     pontos += len(set(m_qua) & set(g_qua)) * 2
 
     m_sem = meu_b2.get('semis','').split(',') if meu_b2.get('semis') else []
-    g_sem = gab_b2.get('semis','').split(',') if gab_b2.get('semis') else []
+    g_sem = gab_b2.get('semis','split(',') if gab_b2.get('semis') else []
     pontos += len(set(m_sem) & set(g_sem)) * 3
 
     m_fin = meu_b2.get('finalistas','').split(',') if meu_b2.get('finalistas') else []
@@ -169,9 +169,9 @@ if not st.session_state.logado:
     
     with aba_login:
         with st.form("form_login"):
-            # LABLES SIMPLIFICADOS PARA FORÇAR O AUTOCOMPLETE DOS NAVEGADORES
-            email_log = st.text_input("E-mail", key="log_em").lower().strip()
-            senha_log = st.text_input("Senha", type="password", key="log_pw")
+            # APLICADO O AUTOCOMPLETE NATIVO PARA O NAVEGADOR RECONHECER O LOGIN
+            email_log = st.text_input("E-mail", key="log_em", autocomplete="email").lower().strip()
+            senha_log = st.text_input("Senha", type="password", key="log_pw", autocomplete="current-password")
             btn_login = st.form_submit_button("Entrar no Sistema", use_container_width=True)
             if btn_login and email_log and senha_log:
                 res = supabase.table("usuarios").select("*").eq("email", email_log).execute()
@@ -187,9 +187,10 @@ if not st.session_state.logado:
     with aba_cadastro:
         st.caption("Insira os dados abaixo para ativar seu e-mail de acesso.")
         with st.form("form_cadastro"):
-            email_cad = st.text_input("E-mail", key="cad_em").lower().strip()
-            nome_cad = st.text_input("Seu Nome Completo", key="cad_nm")
-            senha_cad = st.text_input("Senha", type="password", key="cad_pw")
+            # APLICADO O AUTOCOMPLETE NATIVO PARA O NAVEGADOR RECONHECER O CADASTRO
+            email_cad = st.text_input("E-mail", key="cad_em", autocomplete="email").lower().strip()
+            nome_cad = st.text_input("Seu Nome Completo", key="cad_nm", autocomplete="name")
+            senha_cad = st.text_input("Crie uma Senha", type="password", key="cad_pw", autocomplete="new-password")
             btn_cadastro = st.form_submit_button("Finalizar Meu Cadastro", use_container_width=True)
             if btn_cadastro and email_cad and nome_cad and senha_cad:
                 res = supabase.table("usuarios").select("*").eq("email", email_cad).execute()
@@ -351,7 +352,7 @@ else:
                                         hj_br = hf_br + timedelta(minutes=30)
                                         
                                         st.write(f"**{j['time_casa']} x {j['time_fora']}**")
-                                        st.caption(f"📅 **Jogo:** {hj_br.strftime('%d/%m às %H:%M')} | 🔒 **Limite:** {hf_br.strftime('%H:%M')}")
+                                        st.caption(f"📅 **Jogo:** {hj_br.strftime('%d/%m às %H:%M')} | 🔒 **Limite para chutar:** {hf_br.strftime('%H:%M')}")
                                         
                                         c1, c2, c3, c4 = st.columns([3, 1, 3, 3])
                                         v_casa = c1.number_input(f"Gols {j['time_casa']}", min_value=0, step=1, value=gc, key=f"g_c_{j['id']}")
@@ -361,7 +362,8 @@ else:
                                         novos_p_g[j['id']] = {"gols_casa": v_casa, "gols_fora": v_fora, "classificado": None}
                                         
                                         c4.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
-                                        if c4.form_submit_button("💾 Salvar só este", use_container_width=True):
+                                        # CORREÇÃO: Aplicado ID único para cada botão dentro do loop!
+                                        if c4.form_submit_button("💾 Salvar só este", key=f"btn_salvar_ind_grp_{j['id']}", use_container_width=True):
                                             clicou_salvar = True
                                             
                                         st.write("---")
@@ -369,7 +371,6 @@ else:
                                     if st.form_submit_button(f"💾 Salvar Grupo {grupo_sel} Completo", use_container_width=True, type="primary"):
                                         clicou_salvar = True
 
-                                    # Se a pessoa clicou em qualquer botão de salvar (individual ou em grupo), salva todos os inputs da tela!
                                     if clicou_salvar:
                                         for id_j, dados in novos_p_g.items():
                                             if str(id_j) in mapa_meus: supabase.table("palpites_copa").update(dados).eq("email_usuario", st.session_state.email_usuario).eq("id_jogo", id_j).execute()
@@ -410,7 +411,8 @@ else:
                                 novos_p_m[j['id']] = {"gols_casa": v_casa, "gols_fora": v_fora, "classificado": v_classif}
                                 
                                 c_btn.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
-                                if c_btn.form_submit_button("💾 Salvar só este", use_container_width=True):
+                                # CORREÇÃO: Aplicado ID único para cada botão dentro do loop!
+                                if c_btn.form_submit_button("💾 Salvar só este", key=f"btn_salvar_ind_mt_{j['id']}", use_container_width=True):
                                     clicou_mata = True
                                 st.divider()
                                 
