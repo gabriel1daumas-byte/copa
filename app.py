@@ -143,6 +143,7 @@ def calcular_pontos_bonus2(meu_b2, gab_b2):
     pontos += len(set(m_qua) & set(g_qua)) * 2
 
     m_sem = meu_b2.get('semis','').split(',') if meu_b2.get('semis') else []
+    # CORRIGIDO: A aspa que estava fora do lugar na linha abaixo:
     g_sem = gab_b2.get('semis','').split(',') if gab_b2.get('semis') else []
     pontos += len(set(m_sem) & set(g_sem)) * 3
 
@@ -526,13 +527,21 @@ else:
                                 st.warning("🔒 Palpites ocultos. A tabela de apostas da galera será revelada automaticamente faltando 29 minutos para o início do jogo!")
                             st.write("---")
 
-    # --- 2. BÔNUS 1: VIDENTES COM SWAP DINÂMICO E SEM TRAVA DE TEMPO ---
+    # --- 2. BÔNUS 1: VIDENTES COM SWAP DINÂMICO E TRAVA AUTOMÁTICA ---
     elif menu == "Bônus 1: Videntes dos Grupos":
         st.title("🔮 Videntes da Fase de Grupos")
         st.caption("Monte a sua classificação. Se escolher uma seleção que já está em outra posição, o sistema inverterá as duas posições automaticamente!")
         
-        # O usuário solicitou liberação total do Vidente 1 sem tempo
+        jogos_grupos_b1 = buscar_dados_paginados("jogos_copa", "horario_fechamento", "fase", "Fase de Grupos")
         passou_do_prazo_b1 = False
+        
+        if jogos_grupos_b1:
+            fechamentos = [converter_para_br(j['horario_fechamento']) for j in jogos_grupos_b1 if j.get('horario_fechamento')]
+            if fechamentos and agora >= min(fechamentos):
+                passou_do_prazo_b1 = True
+
+        if passou_do_prazo_b1:
+            st.error("🔒 Mercado Fechado! O primeiro jogo da Copa do Mundo já iniciou, impossibilitando novos envios ou alterações nas previsões dos grupos.")
         
         existentes = buscar_dados_paginados("bonus_grupos", "*", "email_usuario", st.session_state.email_usuario)
         mapa_b = {b['grupo']: b for b in existentes}
