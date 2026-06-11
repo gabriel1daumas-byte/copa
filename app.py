@@ -526,24 +526,13 @@ else:
                                 st.warning("🔒 Palpites ocultos. A tabela de apostas da galera será revelada automaticamente faltando 29 minutos para o início do jogo!")
                             st.write("---")
 
-    # --- 2. BÔNUS 1: VIDENTES COM SWAP DINÂMICO E TRAVA AUTOMÁTICA ATÉ O JOGO ---
+    # --- 2. BÔNUS 1: VIDENTES COM SWAP DINÂMICO E SEM TRAVA DE TEMPO ---
     elif menu == "Bônus 1: Videntes dos Grupos":
         st.title("🔮 Videntes da Fase de Grupos")
         st.caption("Monte a sua classificação. Se escolher uma seleção que já está em outra posição, o sistema inverterá as duas posições automaticamente!")
         
-        jogos_grupos_b1 = buscar_dados_paginados("jogos_copa", "horario_fechamento", "fase", "Fase de Grupos")
+        # O usuário solicitou liberação total do Vidente 1 sem tempo
         passou_do_prazo_b1 = False
-        
-        if jogos_grupos_b1:
-            fechamentos = [converter_para_br(j['horario_fechamento']) for j in jogos_grupos_b1 if j.get('horario_fechamento')]
-            if fechamentos:
-                # Soma 30 minutos ao horário de fechamento para bater exatamente com a hora que a bola rola
-                inicio_primeiro_jogo = min(fechamentos) + timedelta(minutes=30)
-                if agora >= inicio_primeiro_jogo:
-                    passou_do_prazo_b1 = True
-
-        if passou_do_prazo_b1:
-            st.error("🔒 Mercado Fechado! O primeiro jogo da Copa do Mundo já iniciou, impossibilitando novos envios ou alterações nas previsões dos grupos.")
         
         existentes = buscar_dados_paginados("bonus_grupos", "*", "email_usuario", st.session_state.email_usuario)
         mapa_b = {b['grupo']: b for b in existentes}
