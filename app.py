@@ -143,7 +143,6 @@ def calcular_pontos_bonus2(meu_b2, gab_b2):
     pontos += len(set(m_qua) & set(g_qua)) * 2
 
     m_sem = meu_b2.get('semis','').split(',') if meu_b2.get('semis') else []
-    # CORRIGIDO: A aspa que estava fora do lugar na linha abaixo:
     g_sem = gab_b2.get('semis','').split(',') if gab_b2.get('semis') else []
     pontos += len(set(m_sem) & set(g_sem)) * 3
 
@@ -170,7 +169,6 @@ if not st.session_state.logado:
     
     with aba_login:
         with st.form("form_login"):
-            # APLICADO O AUTOCOMPLETE NATIVO PARA O NAVEGADOR RECONHECER O LOGIN
             email_log = st.text_input("E-mail", key="log_em", autocomplete="email").lower().strip()
             senha_log = st.text_input("Senha", type="password", key="log_pw", autocomplete="current-password")
             btn_login = st.form_submit_button("Entrar no Sistema", use_container_width=True)
@@ -188,7 +186,6 @@ if not st.session_state.logado:
     with aba_cadastro:
         st.caption("Insira os dados abaixo para ativar seu e-mail de acesso.")
         with st.form("form_cadastro"):
-            # APLICADO O AUTOCOMPLETE NATIVO PARA O NAVEGADOR RECONHECER O CADASTRO
             email_cad = st.text_input("E-mail", key="cad_em", autocomplete="email").lower().strip()
             nome_cad = st.text_input("Seu Nome Completo", key="cad_nm", autocomplete="name")
             senha_cad = st.text_input("Crie uma Senha", type="password", key="cad_pw", autocomplete="new-password")
@@ -290,7 +287,7 @@ else:
     liberado_mata = config_global.get('palpites_matamata_liberados', False)
     liberado_chave_bonus = config_global.get('bonus_chave_liberado', False)
 
-    # --- 1. FAZER PALPITES DE JOGOS ---
+    # --- 1. FAZER PALPITES DE JOGOS (ATUALIZADO COM FILTRO DIÁRIO PADRÃO) ---
     if menu == "Fazer Palpites de Jogos":
         st.title(f"Palpites Disponíveis")
         jogos_db = buscar_dados_paginados("jogos_copa", "*")
@@ -310,122 +307,204 @@ else:
                 
             if not jogos_abertos: st.warning("🔒 Todos os mercados de apostas estão fechados ou bloqueados pelo Administrador.")
             else:
-                aba_pendentes, aba_grupos, aba_mata = st.tabs(["🚨 Faltam Palpitar", "⚽ Fase de Grupos", "🔥 Mata-Mata"])
-
-                with aba_pendentes:
-                    jogos_faltando = [j for j in jogos_abertos if str(j['id']) not in mapa_meus]
-                    if not jogos_faltando: 
-                        st.success("🎉 Sensacional! Todos os seus palpites para as partidas abertas já estão registrados!")
-                    else:
-                        st.error(f"⚠️ Atenção! Faltam palpites para {len(jogos_faltando)} jogo(s) aberto(s).")
-                        st.caption("Navegue pelas abas abaixo para preencher os confrontos listados:")
-                        st.write("")
-                        for j in jogos_faltando:
-                            tipo_fase = f"Grupo {get_grupo(j['time_casa'])}" if not j.get('is_mata_mata') else f"{j['fase']}"
-                            hf_br = converter_para_br(j['horario_fechamento'])
-                            st.info(f"⏳ **{j['time_casa']} x {j['time_fora']}** — *({tipo_fase})*\n\n"
-                                    f"⏰ **Fecha em:** {hf_br.strftime('%d/%m às %H:%M')}")
-
-                with aba_grupos:
-                    jogos_g = [j for j in jogos_abertos if not j.get('is_mata_mata')]
-                    if not jogos_g: st.info("Nenhum jogo da fase de grupos aberto.")
-                    else:
-                        grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_g if get_grupo(j['time_casa']) != "Mata-Mata")))
-                        if grupos_disponiveis:
-                            grupo_sel = st.selectbox("🎯 Escolha o Grupo para visualizar/palpitar:", grupos_disponiveis, key="sb_grupo_palpites")
-                            jogos_deste = [j for j in jogos_g if get_grupo(j['time_casa']) == grupo_sel]
-                            feitos = sum(1 for j in jogos_deste if str(j['id']) in mapa_meus)
-                            total = len(jogos_deste)
+                # UX DE SELEÇÃO DE MODO DE VISUALIZAÇÃO
+                modo_visao = st.radio("Escolha como quer navegar pelos jogos:", ["📅 Agenda Diária (Foco Hoje)", "🏆 Categorias (Por Grupo / Chave)"], horizontal=True, key="modo_visao_palpites")
+                
+                # --- MODO 1: VISÃO AGENDA DIÁRIA ---
+                if modo_visao == "📅 Agenda Diária (Foco Hoje)":
+                    data_sel = st.date_input("Escolha o dia para palpitar:", value=agora.date(), key="date_picker_palpites")
+                    
+                    jogos_do_dia = []
+                    for j in jogos_abertos:
+                        dt_jogo = converter_para_br(j['horario_fechamento']) + timedelta(minutes=30)
+                        if dt_jogo.date() == data_sel:
+                            jogos_do_dia.append(j)
                             
-                            with st.form(f"form_grupo_{grupo_sel}"):
-                                st.write(f"### Grupo {grupo_sel} — {feitos}/{total} palpites preenchidos")
-                                novos_p_g = {}
-                                clicou_salvar = False
-                                
-                                if not jogos_deste:
-                                    st.info(f"Todos os confrontos abertos do Grupo {grupo_sel} já foram respondidos ou trancados pelo horário.")
-                                else:
-                                    for j in jogos_deste:
-                                        p_ant = mapa_meus.get(str(j['id']), {})
-                                        gc, gf = p_ant.get('gols_casa', 0), p_ant.get('gols_fora', 0)
-                                        
-                                        hf_br = converter_para_br(j['horario_fechamento'])
-                                        hj_br = hf_br + timedelta(minutes=30)
-                                        
-                                        st.write(f"**{j['time_casa']} x {j['time_fora']}**")
-                                        st.caption(f"📅 **Jogo:** {hj_br.strftime('%d/%m às %H:%M')} | 🔒 **Limite para chutar:** {hf_br.strftime('%H:%M')}")
-                                        
-                                        c1, c2, c3, c4 = st.columns([3, 1, 3, 3])
-                                        v_casa = c1.number_input(f"Gols {j['time_casa']}", min_value=0, step=1, value=gc, key=f"g_c_{j['id']}")
-                                        c2.markdown("<h3 style='text-align: center; padding-top: 25px;'>X</h3>", unsafe_allow_html=True)
-                                        v_fora = c3.number_input(f"Gols {j['time_fora']}", min_value=0, step=1, value=gf, key=f"g_f_{j['id']}")
-                                        
-                                        novos_p_g[j['id']] = {"gols_casa": v_casa, "gols_fora": v_fora, "classificado": None}
-                                        
-                                        c4.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
-                                        if c4.form_submit_button("💾 Salvar só este", key=f"btn_salvar_ind_grp_{j['id']}", use_container_width=True):
-                                            clicou_salvar = True
-                                            
-                                        st.write("---")
-                                        
-                                    if st.form_submit_button(f"💾 Salvar Grupo {grupo_sel} Completo", use_container_width=True, type="primary"):
-                                        clicou_salvar = True
-
-                                    if clicou_salvar:
-                                        for id_j, dados in novos_p_g.items():
-                                            if str(id_j) in mapa_meus: supabase.table("palpites_copa").update(dados).eq("email_usuario", st.session_state.email_usuario).eq("id_jogo", id_j).execute()
-                                            else:
-                                                dados.update({"email_usuario": st.session_state.email_usuario, "id_jogo": id_j})
-                                                supabase.table("palpites_copa").insert(dados).execute()
-                                        st.success(f"Apostas salvas com sucesso!")
-                                        st.rerun()
-
-                with aba_mata:
-                    jogos_m = [j for j in jogos_abertos if j.get('is_mata_mata')]
-                    if not jogos_m: st.info("Nenhum jogo de Mata-Mata liberado e confirmado ainda.")
+                    if not jogos_do_dia:
+                        st.info(f"Nenhum confronto oficial em aberto agendado para o dia {data_sel.strftime('%d/%m/%Y')}.")
                     else:
-                        with st.form("form_mata_completo"):
-                            novos_p_m = {}
-                            clicou_mata = False
-                            for j in jogos_m:
+                        with st.form("form_palpites_diarios"):
+                            st.write(f"### 📅 Rodadas de {data_sel.strftime('%d/%m/%Y')}")
+                            novos_p_dia = {}
+                            clicou_salvar_dia = False
+                            
+                            for j in jogos_do_dia:
                                 p_ant = mapa_meus.get(str(j['id']), {})
                                 gc, gf = p_ant.get('gols_casa', 0), p_ant.get('gols_fora', 0)
                                 cl = p_ant.get('classificado', j['time_casa'])
+                                tem_palpite = str(j['id']) in mapa_meus
                                 
                                 hf_br = converter_para_br(j['horario_fechamento'])
                                 hj_br = hf_br + timedelta(minutes=30)
                                 
-                                st.write(f"### {j['time_casa']} x {j['time_fora']} — *({j['fase']})*")
-                                st.caption(f"📅 **Jogo:** {hj_br.strftime('%d/%m às %H:%M')} | 🔒 **Limite para chutar:** {hf_br.strftime('%H:%M')}")
+                                tipo_fase = f"Grupo {get_grupo(j['time_casa'])}" if not j.get('is_mata_mata') else f"{j['fase']}"
                                 
-                                c1, c2, c3 = st.columns([3, 1, 3])
-                                v_casa = c1.number_input(f"Gols {j['time_casa']}", min_value=0, step=1, value=gc, key=f"m_c_{j['id']}")
-                                c2.markdown("<h3 style='text-align: center; padding-top: 25px;'>X</h3>", unsafe_allow_html=True)
-                                v_fora = c3.number_input(f"Gols {j['time_fora']}", min_value=0, step=1, value=gf, key=f"m_f_{j['id']}")
+                                # UX INDICATORS DE STATUS DO PALPITE
+                                if tem_palpite:
+                                    st.markdown(f"#### 🟢 **[PALPITE CONFIRMADO]** {j['time_casa']} x {j['time_fora']} — *({tipo_fase})*")
+                                    st.caption(f"Placar salvo atualmente: {p_ant['gols_casa']} x {p_ant['gols_fora']}" + (f" | Passa: {p_ant['classificado']}" if j.get('is_mata_mata') else ""))
+                                else:
+                                    st.markdown(f"#### 🟡 **[PENDENTE - SEM PALPITE]** {j['time_casa']} x {j['time_fora']} — *({tipo_fase})*")
+                                    
+                                st.caption(f"⏰ Horário do jogo: {hj_br.strftime('%H:%M')} | 🔒 Limite para salvar: {hf_br.strftime('%H:%M')}")
                                 
-                                c_rad, c_btn = st.columns([3, 2])
-                                op_cl = [j['time_casa'], j['time_fora']]
-                                idx_cl = op_cl.index(cl) if cl in op_cl else 0
-                                v_classif = c_rad.radio("Quem se classifica?", op_cl, index=idx_cl, key=f"m_cl_{j['id']}", horizontal=True)
+                                if j.get('is_mata_mata'):
+                                    c1, c2, c3 = st.columns([3, 1, 3])
+                                    v_casa = c1.number_input(f"Gols {j['time_casa']}", min_value=0, step=1, value=gc, key=f"d_g_c_{j['id']}")
+                                    c2.markdown("<h3 style='text-align: center; padding-top: 25px;'>X</h3>", unsafe_allow_html=True)
+                                    v_fora = c3.number_input(f"Gols {j['time_fora']}", min_value=0, step=1, value=gf, key=f"d_g_f_{j['id']}")
+                                    
+                                    c_rad, c_btn = st.columns([3, 2])
+                                    op_cl = [j['time_casa'], j['time_fora']]
+                                    idx_cl = op_cl.index(cl) if cl in op_cl else 0
+                                    v_classif = c_rad.radio("Quem se classifica?", op_cl, index=idx_cl, key=f"d_m_cl_{j['id']}", horizontal=True)
+                                    
+                                    c_btn.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
+                                    if c_btn.form_submit_button("💾 Salvar só este", key=f"btn_salvar_dia_ind_mt_{j['id']}", use_container_width=True):
+                                        clicou_salvar_dia = True
+                                    novos_p_dia[j['id']] = {"gols_casa": v_casa, "gols_fora": v_fora, "classificado": v_classif}
+                                else:
+                                    c1, c2, c3, c4 = st.columns([3, 1, 3, 3])
+                                    v_casa = c1.number_input(f"Gols {j['time_casa']}", min_value=0, step=1, value=gc, key=f"d_g_c_{j['id']}")
+                                    c2.markdown("<h3 style='text-align: center; padding-top: 25px;'>X</h3>", unsafe_allow_html=True)
+                                    v_fora = c3.number_input(f"Gols {j['time_fora']}", min_value=0, step=1, value=gf, key=f"d_g_f_{j['id']}")
+                                    
+                                    c4.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
+                                    if c4.form_submit_button("💾 Salvar só este", key=f"btn_salvar_dia_ind_gp_{j['id']}", use_container_width=True):
+                                        clicou_salvar_dia = True
+                                    novos_p_dia[j['id']] = {"gols_casa": v_casa, "gols_fora": v_fora, "classificado": None}
+                                st.write("---")
                                 
-                                novos_p_m[j['id']] = {"gols_casa": v_casa, "gols_fora": v_fora, "classificado": v_classif}
+                            if st.form_submit_button("💾 Salvar Todos os Jogos do Dia", use_container_width=True, type="primary"):
+                                clicou_salvar_dia = True
                                 
-                                c_btn.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
-                                if c_btn.form_submit_button("💾 Salvar só este", key=f"btn_salvar_ind_mt_{j['id']}", use_container_width=True):
-                                    clicou_mata = True
-                                st.divider()
-                                
-                            if st.form_submit_button("💾 Salvar Todo o Mata-Mata", use_container_width=True, type="primary"):
-                                clicou_mata = True
-                                
-                            if clicou_mata:
-                                for id_j, dados in novos_p_m.items():
+                            if clicou_salvar_dia:
+                                for id_j, dados in novos_p_dia.items():
                                     if str(id_j) in mapa_meus: supabase.table("palpites_copa").update(dados).eq("email_usuario", st.session_state.email_usuario).eq("id_jogo", id_j).execute()
                                     else:
                                         dados.update({"email_usuario": st.session_state.email_usuario, "id_jogo": id_j})
                                         supabase.table("palpites_copa").insert(dados).execute()
-                                st.success("Apostas salvas com sucesso!")
+                                st.success("Palpites do dia salvos com sucesso!")
                                 st.rerun()
+
+                # --- MODO 2: VISÃO TRADICIONAL POR CATEGORIAS ---
+                else:
+                    aba_pendentes, aba_grupos, aba_mata = st.tabs(["🚨 Faltam Palpitar", "⚽ Fase de Grupos", "🔥 Mata-Mata"])
+
+                    with aba_pendentes:
+                        jogos_faltando = [j for j in jogos_abertos if str(j['id']) not in mapa_meus]
+                        if not jogos_faltando: 
+                            st.success("🎉 Sensacional! Todos os seus palpites para as partidas abertas já estão registrados!")
+                        else:
+                            st.error(f"⚠️ Atenção! Faltam palpites para {len(jogos_faltando)} jogo(s) aberto(s).")
+                            st.caption("Preencha os confrontos listados abaixo navegando pelas abas corporativas:")
+                            st.write("")
+                            for j in jogos_faltando:
+                                tipo_fase = f"Grupo {get_grupo(j['time_casa'])}" if not j.get('is_mata_mata') else f"{j['fase']}"
+                                hf_br = converter_para_br(j['horario_fechamento'])
+                                st.info(f"⏳ **{j['time_casa']} x {j['time_fora']}** — *({tipo_fase})*\n\n"
+                                        f"⏰ **Fecha em:** {hf_br.strftime('%d/%m às %H:%M')}")
+
+                    with aba_grupos:
+                        jogos_g = [j for j in jogos_abertos if not j.get('is_mata_mata')]
+                        if not jogos_g: st.info("Nenhum jogo da fase de grupos aberto.")
+                        else:
+                            grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_g if get_grupo(j['time_casa']) != "Mata-Mata")))
+                            if grupos_disponiveis:
+                                grupo_sel = st.selectbox("🎯 Escolha o Grupo para visualizar/palpitar:", grupos_disponiveis, key="sb_grupo_palpites")
+                                jogos_deste = [j for j in jogos_g if get_grupo(j['time_casa']) == grupo_sel]
+                                feitos = sum(1 for j in jogos_deste if str(j['id']) in mapa_meus)
+                                total = len(jogos_deste)
+                                
+                                with st.form(f"form_grupo_{grupo_sel}"):
+                                    st.write(f"### Grupo {grupo_sel} — {feitos}/{total} palpites preenchidos")
+                                    novos_p_g = {}
+                                    clicou_salvar = False
+                                    
+                                    if not jogos_deste:
+                                        st.info(f"Todos os confrontos abertos do Grupo {grupo_sel} já foram respondidos ou trancados pelo horário.")
+                                    else:
+                                        for j in jogos_deste:
+                                            p_ant = mapa_meus.get(str(j['id']), {})
+                                            gc, gf = p_ant.get('gols_casa', 0), p_ant.get('gols_fora', 0)
+                                            
+                                            hf_br = converter_para_br(j['horario_fechamento'])
+                                            hj_br = hf_br + timedelta(minutes=30)
+                                            
+                                            st.write(f"**{j['time_casa']} x {j['time_fora']}**")
+                                            st.caption(f"📅 **Jogo:** {hj_br.strftime('%d/%m às %H:%M')} | 🔒 **Limite para chutar:** {hf_br.strftime('%H:%M')}")
+                                            
+                                            c1, c2, c3, c4 = st.columns([3, 1, 3, 3])
+                                            v_casa = c1.number_input(f"Gols {j['time_casa']}", min_value=0, step=1, value=gc, key=f"g_c_{j['id']}")
+                                            c2.markdown("<h3 style='text-align: center; padding-top: 25px;'>X</h3>", unsafe_allow_html=True)
+                                            v_fora = c3.number_input(f"Gols {j['time_fora']}", min_value=0, step=1, value=gf, key=f"g_f_{j['id']}")
+                                            
+                                            novos_p_g[j['id']] = {"gols_casa": v_casa, "gols_fora": v_fora, "classificado": None}
+                                            
+                                            c4.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
+                                            if c4.form_submit_button("💾 Salvar só este", key=f"btn_salvar_ind_grp_{j['id']}", use_container_width=True):
+                                                clicou_salvar = True
+                                                
+                                            st.write("---")
+                                            
+                                        if st.form_submit_button(f"💾 Salvar Grupo {grupo_sel} Completo", use_container_width=True, type="primary"):
+                                            clicou_salvar = True
+
+                                        if clicou_salvar:
+                                            for id_j, dados in novos_p_g.items():
+                                                if str(id_j) in mapa_meus: supabase.table("palpites_copa").update(dados).eq("email_usuario", st.session_state.email_usuario).eq("id_jogo", id_j).execute()
+                                                else:
+                                                    dados.update({"email_usuario": st.session_state.email_usuario, "id_jogo": id_j})
+                                                    supabase.table("palpites_copa").insert(dados).execute()
+                                            st.success(f"Apostas salvas com sucesso!")
+                                            st.rerun()
+
+                    with aba_mata:
+                        jogos_m = [j for j in jogos_abertos if j.get('is_mata_mata')]
+                        if not jogos_m: st.info("Nenhum jogo de Mata-Mata liberado e confirmado ainda.")
+                        else:
+                            with st.form("form_mata_completo"):
+                                novos_p_m = {}
+                                clicou_mata = False
+                                for j in jogos_m:
+                                    p_ant = mapa_meus.get(str(j['id']), {})
+                                    gc, gf = p_ant.get('gols_casa', 0), p_ant.get('gols_fora', 0)
+                                    cl = p_ant.get('classificado', j['time_casa'])
+                                    
+                                    hf_br = converter_para_br(j['horario_fechamento'])
+                                    hj_br = hf_br + timedelta(minutes=30)
+                                    
+                                    st.write(f"### {j['time_casa']} x {j['time_fora']} — *({j['fase']})*")
+                                    st.caption(f"📅 **Jogo:** {hj_br.strftime('%d/%m às %H:%M')} | 🔒 **Limite para chutar:** {hf_br.strftime('%H:%M')}")
+                                    
+                                    c1, c2, c3 = st.columns([3, 1, 3])
+                                    v_casa = c1.number_input(f"Gols {j['time_casa']}", min_value=0, step=1, value=gc, key=f"m_c_{j['id']}")
+                                    c2.markdown("<h3 style='text-align: center; padding-top: 25px;'>X</h3>", unsafe_allow_html=True)
+                                    v_fora = c3.number_input(f"Gols {j['time_fora']}", min_value=0, step=1, value=gf, key=f"m_f_{j['id']}")
+                                    
+                                    c_rad, c_btn = st.columns([3, 2])
+                                    op_cl = [j['time_casa'], j['time_fora']]
+                                    idx_cl = op_cl.index(cl) if cl in op_cl else 0
+                                    v_classif = c_rad.radio("Quem se classifica?", op_cl, index=idx_cl, key=f"m_cl_{j['id']}", horizontal=True)
+                                    
+                                    novos_p_m[j['id']] = {"gols_casa": v_casa, "gols_fora": v_fora, "classificado": v_classif}
+                                    
+                                    c_btn.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
+                                    if c_btn.form_submit_button("💾 Salvar só este", key=f"btn_salvar_ind_mt_{j['id']}", use_container_width=True):
+                                        clicou_mata = True
+                                    st.divider()
+                                    
+                                if st.form_submit_button("💾 Salvar Todo o Mata-Mata", use_container_width=True, type="primary"):
+                                    clicou_mata = True
+                                    
+                                if clicou_mata:
+                                    for id_j, dados in novos_p_m.items():
+                                        if str(id_j) in mapa_meus: supabase.table("palpites_copa").update(dados).eq("email_usuario", st.session_state.email_usuario).eq("id_jogo", id_j).execute()
+                                        else:
+                                            dados.update({"email_usuario": st.session_state.email_usuario, "id_jogo": id_j})
+                                            supabase.table("palpites_copa").insert(dados).execute()
+                                    st.success("Apostas salvas com sucesso!")
+                                    st.rerun()
 
     # --- 1B. ABA: MEUS PALPITES ---
     elif menu == "Meus Palpites":
@@ -527,21 +606,12 @@ else:
                                 st.warning("🔒 Palpites ocultos. A tabela de apostas da galera será revelada automaticamente faltando 29 minutos para o início do jogo!")
                             st.write("---")
 
-    # --- 2. BÔNUS 1: VIDENTES COM SWAP DINÂMICO E TRAVA AUTOMÁTICA ---
+    # --- 2. BÔNUS 1: VIDENTES COM SWAP DINÂMICO E SEM TRAVA DE TEMPO ---
     elif menu == "Bônus 1: Videntes dos Grupos":
         st.title("🔮 Videntes da Fase de Grupos")
         st.caption("Monte a sua classificação. Se escolher uma seleção que já está em outra posição, o sistema inverterá as duas posições automaticamente!")
         
-        jogos_grupos_b1 = buscar_dados_paginados("jogos_copa", "horario_fechamento", "fase", "Fase de Grupos")
         passou_do_prazo_b1 = False
-        
-        if jogos_grupos_b1:
-            fechamentos = [converter_para_br(j['horario_fechamento']) for j in jogos_grupos_b1 if j.get('horario_fechamento')]
-            if fechamentos and agora >= min(fechamentos):
-                passou_do_prazo_b1 = True
-
-        if passou_do_prazo_b1:
-            st.error("🔒 Mercado Fechado! O primeiro jogo da Copa do Mundo já iniciou, impossibilitando novos envios ou alterações nas previsões dos grupos.")
         
         existentes = buscar_dados_paginados("bonus_grupos", "*", "email_usuario", st.session_state.email_usuario)
         mapa_b = {b['grupo']: b for b in existentes}
@@ -927,7 +997,7 @@ else:
                                     dt_comb_edit = datetime.combine(new_date, new_time)
                                     dt_fechamento_edit = fuso_br.localize(dt_comb_edit) - timedelta(minutes=30)
                                     supabase.table("jogos_copa").update({"horario_fechamento": dt_fechamento_edit.isoformat()}).eq("id", j['id']).execute()
-                                    st.success(f"Horário atualizado!")
+                                    st.success(f"Horário updated!")
                                     st.rerun()
                                 st.write("")
             else:
