@@ -287,7 +287,7 @@ else:
     liberado_mata = config_global.get('palpites_matamata_liberados', False)
     liberado_chave_bonus = config_global.get('bonus_chave_liberado', False)
 
-    # --- 1. FAZER PALPITES DE JOGOS (ATUALIZADO COM FILTRO DIÁRIO PADRÃO) ---
+    # --- 1. FAZER PALPITES DE JOGOS ---
     if menu == "Fazer Palpites de Jogos":
         st.title(f"Palpites Disponíveis")
         jogos_db = buscar_dados_paginados("jogos_copa", "*")
@@ -307,7 +307,6 @@ else:
                 
             if not jogos_abertos: st.warning("🔒 Todos os mercados de apostas estão fechados ou bloqueados pelo Administrador.")
             else:
-                # UX DE SELEÇÃO DE MODO DE VISUALIZAÇÃO
                 modo_visao = st.radio("Escolha como quer navegar pelos jogos:", ["📅 Agenda Diária (Foco Hoje)", "🏆 Categorias (Por Grupo / Chave)"], horizontal=True, key="modo_visao_palpites")
                 
                 # --- MODO 1: VISÃO AGENDA DIÁRIA ---
@@ -339,7 +338,6 @@ else:
                                 
                                 tipo_fase = f"Grupo {get_grupo(j['time_casa'])}" if not j.get('is_mata_mata') else f"{j['fase']}"
                                 
-                                # UX INDICATORS DE STATUS DO PALPITE
                                 if tem_palpite:
                                     st.markdown(f"#### 🟢 **[PALPITE CONFIRMADO]** {j['time_casa']} x {j['time_fora']} — *({tipo_fase})*")
                                     st.caption(f"Placar salvo atualmente: {p_ant['gols_casa']} x {p_ant['gols_fora']}" + (f" | Passa: {p_ant['classificado']}" if j.get('is_mata_mata') else ""))
@@ -559,7 +557,7 @@ else:
                         else: st.markdown("⏳ *Aguardando encerramento e resultado oficial do confronto.*")
                         st.write("---")
 
-    # --- 1C. ABA: PALPITES DA GALERA ---
+    # --- 1C. ABA: PALPITES DA GALERA (ATUALIZADO COM VISÃO DIÁRIA) ---
     elif menu == "Palpites da Galera":
         st.title("👥 Palpites de Todos os Participantes")
         membros = buscar_dados_paginados("membros_bolao", "email_usuario", "id_bolao", st.session_state.bolao_ativo_id)
@@ -575,20 +573,28 @@ else:
             else:
                 jogos = ordenar_jogos(jogos_db)
                 jogos_validos = [j for j in jogos if j.get('times_confirmados')]
-                grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_validos)))
                 
-                if grupos_disponiveis:
-                    grupo_sel = st.selectbox("🎯 Escolha o Bloco para espiar os rivais:", grupos_disponiveis, key="sb_grid_galera_view")
-                    jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
+                modo_visao_galera = st.radio("Escolha como quer visualizar os palpites:", ["📅 Agenda Diária (Foco Hoje)", "🏆 Categorias (Por Grupo / Chave)"], horizontal=True, key="modo_visao_galera")
+                
+                all_palpites = buscar_dados_paginados("palpites_copa", "*", "email_usuario", emails)
+                mapa_palpites = {(p['id_jogo'], p['email_usuario']): p for p in all_palpites}
+
+                if modo_visao_galera == "📅 Agenda Diária (Foco Hoje)":
+                    data_sel = st.date_input("Escolha o dia para espiar:", value=agora.date(), key="date_picker_galera")
                     
-                    all_palpites = buscar_dados_paginados("palpites_copa", "*", "email_usuario", emails)
-                    mapa_palpites = {(p['id_jogo'], p['email_usuario']): p for p in all_palpites}
-                    
+                    jogos_deste = []
+                    for j in jogos_validos:
+                        dt_jogo = converter_para_br(j['horario_fechamento']) + timedelta(minutes=30)
+                        if dt_jogo.date() == data_sel:
+                            jogos_deste.append(j)
+                            
                     if not jogos_deste:
-                        st.info(f"Nenhum jogo aberto ou pendente no Bloco {grupo_sel}.")
+                        st.info(f"Nenhum confronto oficial agendado para o dia {data_sel.strftime('%d/%m/%Y')}.")
                     else:
+                        st.write(f"### 📅 Rodadas de {data_sel.strftime('%d/%m/%Y')}")
                         for j in jogos_deste:
-                            st.write(f"#### ⚽ {j['time_casa']} x {j['time_fora']} — *({j['fase']})*")
+                            tipo_fase = f"Grupo {get_grupo(j['time_casa'])}" if not j.get('is_mata_mata') else f"{j['fase']}"
+                            st.write(f"#### ⚽ {j['time_casa']} x {j['time_fora']} — *({tipo_fase})*")
                             hf_br = converter_para_br(j['horario_fechamento'])
                             is_liberado = agora >= hf_br
                             
@@ -605,6 +611,36 @@ else:
                             else:
                                 st.warning("🔒 Palpites ocultos. A tabela de apostas da galera será revelada automaticamente faltando 29 minutos para o início do jogo!")
                             st.write("---")
+                
+                else:
+                    grupos_disponiveis = sorted(list(set(get_grupo(j['time_casa']) for j in jogos_validos)))
+                    
+                    if grupos_disponiveis:
+                        grupo_sel = st.selectbox("🎯 Escolha o Bloco para espiar os rivais:", grupos_disponiveis, key="sb_grid_galera_view")
+                        jogos_deste = [j for j in jogos_validos if get_grupo(j['time_casa']) == grupo_sel]
+                        
+                        if not jogos_deste:
+                            st.info(f"Nenhum jogo aberto ou pendente no Bloco {grupo_sel}.")
+                        else:
+                            for j in jogos_deste:
+                                tipo_fase = f"Grupo {get_grupo(j['time_casa'])}" if not j.get('is_mata_mata') else f"{j['fase']}"
+                                st.write(f"#### ⚽ {j['time_casa']} x {j['time_fora']} — *({tipo_fase})*")
+                                hf_br = converter_para_br(j['horario_fechamento'])
+                                is_liberado = agora >= hf_br
+                                
+                                if is_liberado:
+                                    rows_galera = []
+                                    for em in emails:
+                                        p = mapa_palpites.get((j['id'], em))
+                                        if p:
+                                            placar_str = f"{p['gols_casa']} x {p['gols_fora']}"
+                                            if j.get('is_mata_mata') and p.get('classificado'): placar_str += f" ({p['classificado']})"
+                                        else: placar_str = "Não palpitou"
+                                        rows_galera.append({"Jogador": mapa_nomes.get(em, em), "Palpite Registrado": placar_str})
+                                    st.dataframe(pd.DataFrame(rows_galera), use_container_width=True, hide_index=True)
+                                else:
+                                    st.warning("🔒 Palpites ocultos. A tabela de apostas da galera será revelada automaticamente faltando 29 minutos para o início do jogo!")
+                                st.write("---")
 
     # --- 2. BÔNUS 1: VIDENTES COM SWAP DINÂMICO E SEM TRAVA DE TEMPO ---
     elif menu == "Bônus 1: Videntes dos Grupos":
@@ -997,7 +1033,7 @@ else:
                                     dt_comb_edit = datetime.combine(new_date, new_time)
                                     dt_fechamento_edit = fuso_br.localize(dt_comb_edit) - timedelta(minutes=30)
                                     supabase.table("jogos_copa").update({"horario_fechamento": dt_fechamento_edit.isoformat()}).eq("id", j['id']).execute()
-                                    st.success(f"Horário updated!")
+                                    st.success(f"Horário atualizado!")
                                     st.rerun()
                                 st.write("")
             else:
