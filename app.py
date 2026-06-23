@@ -557,7 +557,7 @@ else:
                         else: st.markdown("⏳ *Aguardando encerramento e resultado oficial do confronto.*")
                         st.write("---")
 
-    # --- 1C. ABA: PALPITES DA GALERA (ATUALIZADO COM VISÃO DIÁRIA) ---
+    # --- 1C. ABA: PALPITES DA GALERA ---
     elif menu == "Palpites da Galera":
         st.title("👥 Palpites de Todos os Participantes")
         membros = buscar_dados_paginados("membros_bolao", "email_usuario", "id_bolao", st.session_state.bolao_ativo_id)
@@ -642,49 +642,72 @@ else:
                                     st.warning("🔒 Palpites ocultos. A tabela de apostas da galera será revelada automaticamente faltando 29 minutos para o início do jogo!")
                                 st.write("---")
 
-    # --- 2. BÔNUS 1: VIDENTES COM SWAP DINÂMICO E SEM TRAVA DE TEMPO ---
+    # --- 2. BÔNUS 1: VIDENTES COM SWAP DINÂMICO E TRAVADO ---
     elif menu == "Bônus 1: Videntes dos Grupos":
         st.title("🔮 Videntes da Fase de Grupos")
-        st.caption("Monte a sua classificação. Se escolher uma seleção que já está em outra posição, o sistema inverterá as duas posições automaticamente!")
         
-        passou_do_prazo_b1 = False
+        aba_meus, aba_galera = st.tabs(["🔒 Minhas Previsões", "👥 Previsões da Galera"])
         
-        existentes = buscar_dados_paginados("bonus_grupos", "*", "email_usuario", st.session_state.email_usuario)
-        mapa_b = {b['grupo']: b for b in existentes}
-        
-        for grp, times in GRUPOS_COPA.items():
-            if f"arr_{grp}" not in st.session_state:
-                b_ant = mapa_b.get(grp, {})
-                if b_ant.get('pos1') in times:
-                    st.session_state[f"arr_{grp}"] = [b_ant['pos1'], b_ant['pos2'], b_ant['pos3'], b_ant['pos4']]
-                else:
-                    st.session_state[f"arr_{grp}"] = list(times)
-
-        for grp, times in GRUPOS_COPA.items():
-            st.subheader(f"Grupo {grp}")
-            current_teams = st.session_state[f"arr_{grp}"]
-            c1, c2, c3, c4 = st.columns(4)
+        with aba_meus:
+            st.caption("O mercado de palpites para a classificação dos grupos está fechado! Abaixo você pode visualizar as suas escolhas definitivas.")
             
-            c1.selectbox("1º Lugar", times, index=times.index(current_teams[0]), key=f"sb_g{grp}_0", on_change=check_swap, args=(grp, 0), disabled=passou_do_prazo_b1)
-            c2.selectbox("2º Lugar", times, index=times.index(current_teams[1]), key=f"sb_g{grp}_1", on_change=check_swap, args=(grp, 1), disabled=passou_do_prazo_b1)
-            c3.selectbox("3º Lugar", times, index=times.index(current_teams[2]), key=f"sb_g{grp}_2", on_change=check_swap, args=(grp, 2), disabled=passou_do_prazo_b1)
-            c4.selectbox("4º Lugar", times, index=times.index(current_teams[3]), key=f"sb_g{grp}_3", on_change=check_swap, args=(grp, 3), disabled=passou_do_prazo_b1)
-            st.divider()
+            passou_do_prazo_b1 = True
             
-        if not passou_do_prazo_b1:
-            if st.button("💾 Salvar Previsão dos Grupos", use_container_width=True, type="primary"):
-                for grp in GRUPOS_COPA.keys():
-                    final_teams = st.session_state[f"arr_{grp}"]
-                    dados = {
-                        "email_usuario": st.session_state.email_usuario, "grupo": grp,
-                        "pos1": final_teams[0], "pos2": final_teams[1], "pos3": final_teams[2], "pos4": final_teams[3]
-                    }
-                    if grp in mapa_b:
-                        supabase.table("bonus_grupos").update(dados).eq("email_usuario", st.session_state.email_usuario).eq("grupo", grp).execute()
+            existentes = buscar_dados_paginados("bonus_grupos", "*", "email_usuario", st.session_state.email_usuario)
+            mapa_b = {b['grupo']: b for b in existentes}
+            
+            for grp, times in GRUPOS_COPA.items():
+                if f"arr_{grp}" not in st.session_state:
+                    b_ant = mapa_b.get(grp, {})
+                    if b_ant.get('pos1') in times:
+                        st.session_state[f"arr_{grp}"] = [b_ant['pos1'], b_ant['pos2'], b_ant['pos3'], b_ant['pos4']]
                     else:
-                        supabase.table("bonus_grupos").insert(dados).execute()
-                st.success("Todas as suas previsões de classificação foram salvas com sucesso!")
-                st.rerun()
+                        st.session_state[f"arr_{grp}"] = list(times)
+
+            for grp, times in GRUPOS_COPA.items():
+                st.subheader(f"Grupo {grp}")
+                current_teams = st.session_state[f"arr_{grp}"]
+                c1, c2, c3, c4 = st.columns(4)
+                
+                c1.selectbox("1º Lugar", times, index=times.index(current_teams[0]), key=f"sb_g{grp}_0", on_change=check_swap, args=(grp, 0), disabled=passou_do_prazo_b1)
+                c2.selectbox("2º Lugar", times, index=times.index(current_teams[1]), key=f"sb_g{grp}_1", on_change=check_swap, args=(grp, 1), disabled=passou_do_prazo_b1)
+                c3.selectbox("3º Lugar", times, index=times.index(current_teams[2]), key=f"sb_g{grp}_2", on_change=check_swap, args=(grp, 2), disabled=passou_do_prazo_b1)
+                c4.selectbox("4º Lugar", times, index=times.index(current_teams[3]), key=f"sb_g{grp}_3", on_change=check_swap, args=(grp, 3), disabled=passou_do_prazo_b1)
+                st.divider()
+                
+        with aba_galera:
+            st.subheader("Espiar as Previsões da Galera")
+            
+            membros = buscar_dados_paginados("membros_bolao", "email_usuario", "id_bolao", st.session_state.bolao_ativo_id)
+            emails = [m['email_usuario'].lower() for m in membros]
+            
+            if not emails:
+                st.info("Nenhum participante neste grupo.")
+            else:
+                usuarios_dados = buscar_dados_paginados("usuarios", "email, nome", "email", emails)
+                mapa_nomes = {u['email']: u['nome'] for u in usuarios_dados}
+                
+                bonus_galera = buscar_dados_paginados("bonus_grupos", "*", "email_usuario", emails)
+                
+                grupo_sel_galera = st.selectbox("🎯 Escolha o Grupo para ver as previsões dos rivais:", sorted(list(GRUPOS_COPA.keys())), key="sb_grupo_videntes_galera")
+                
+                previsoes_grupo = [b for b in bonus_galera if b['grupo'] == grupo_sel_galera]
+                
+                if not previsoes_grupo:
+                    st.info(f"Ninguém salvou previsões para o Grupo {grupo_sel_galera} ainda.")
+                else:
+                    rows_galera_videntes = []
+                    for p in previsoes_grupo:
+                        nome = mapa_nomes.get(p['email_usuario'], p['email_usuario'])
+                        rows_galera_videntes.append({
+                            "Jogador": nome,
+                            "🥇 1º Lugar": p['pos1'],
+                            "🥈 2º Lugar": p['pos2'],
+                            "🥉 3º Lugar": p['pos3'],
+                            "4º Lugar": p['pos4']
+                        })
+                    
+                    st.dataframe(pd.DataFrame(rows_galera_videntes), use_container_width=True, hide_index=True)
 
     # --- 3. BÔNUS 2: CHAVE FINAL ---
     elif menu == "Bônus 2: Chave Final":
