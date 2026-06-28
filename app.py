@@ -163,46 +163,58 @@ def limpar_texto_pdf(texto):
 
 def construir_pdf(titulo_principal, dfs_dict):
     if not FPDF: return None
-    pdf = FPDF()
+    pdf = FPDF(orientation='P', unit='mm', format='A4')
+    pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
+    
+    # Título
     pdf.set_font("Arial", 'B', 14)
     pdf.cell(0, 10, limpar_texto_pdf(titulo_principal), 0, 1, 'C')
     pdf.ln(5)
     
-    for subtitle, df in dfs_dict.items():
+    for nome_tabela, df in dfs_dict.items():
         if df.empty: continue
+        
         pdf.set_font("Arial", 'B', 11)
-        pdf.cell(0, 10, limpar_texto_pdf(subtitle), 0, 1, 'L')
+        pdf.cell(0, 10, limpar_texto_pdf(nome_tabela), 0, 1, 'L')
         
-        # Ajuste de largura baseado no número de colunas
+        # Largura total útil da página A4 (210mm total - 20mm margens)
+        largura_total = 190
         num_cols = len(df.columns)
-        col_w = 190 / num_cols
+        col_w = largura_total / num_cols
         
-        # Cabeçalho
-        pdf.set_font("Arial", 'B', 9)
+        # Cabeçalho da tabela
+        pdf.set_font("Arial", 'B', 8)
         for col in df.columns:
-            pdf.cell(col_w, 10, limpar_texto_pdf(col), 1, 0, 'C')
+            pdf.cell(col_w, 8, limpar_texto_pdf(col), 1, 0, 'C')
         pdf.ln()
         
         # Linhas da tabela
-        pdf.set_font("Arial", '', 8)
+        pdf.set_font("Arial", '', 7)
         for _, row in df.iterrows():
-            # Altura da linha precisa ser calculada pela maior célula da linha (neste caso, fixamos)
-            line_height = 8 
+            line_height = 7
             
-            # Precisamos salvar a posição X para voltar no início da linha
-            x_pos = pdf.get_x()
-            y_pos = pdf.get_y()
+            # Verifica se precisa de nova página antes de desenhar a linha
+            if pdf.get_y() > 270: 
+                pdf.add_page()
+                # Repete o cabeçalho na nova página
+                pdf.set_font("Arial", 'B', 8)
+                for col in df.columns: pdf.cell(col_w, 8, limpar_texto_pdf(col), 1, 0, 'C')
+                pdf.ln()
+                pdf.set_font("Arial", '', 7)
+
+            # Salva posição inicial da linha
+            x_start = pdf.get_x()
+            y_start = pdf.get_y()
             
-            # MultiCell não avança automaticamente como o cell(), então controlamos a posição
+            # Desenha as células da linha
             for item in row:
-                # O MultiCell ajusta o texto dentro da largura col_w
+                # O parâmetro 'L' no multi_cell com alinhamento ajuda a manter o texto contido
                 pdf.multi_cell(col_w, line_height, limpar_texto_pdf(item), 1, 'C')
-                # Move a posição Y de volta para a mesma altura da linha
-                pdf.set_xy(pdf.get_x() + col_w, y_pos)
+                pdf.set_xy(pdf.get_x() + col_w, y_start)
             
-            # Pula para a linha de baixo após preencher todas as colunas
-            pdf.set_xy(x_pos, y_pos + line_height)
+            # Pula para a próxima linha
+            pdf.set_xy(x_start, y_start + line_height)
             
         pdf.ln(5)
         
@@ -212,7 +224,7 @@ def construir_pdf(titulo_principal, dfs_dict):
             pdf_bytes = f.read()
     os.unlink(tmp.name)
     return pdf_bytes
-
+    
 # --- SESSÃO ---
 if "logado" not in st.session_state:
     st.session_state.update(logado=False, email_usuario="", nome_usuario="", is_superadmin=False, bolao_ativo_id=None, bolao_ativo_nome=None, is_admin_bolao_ativo=False, menu_atual="")
