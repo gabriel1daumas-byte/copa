@@ -174,17 +174,36 @@ def construir_pdf(titulo_principal, dfs_dict):
         pdf.set_font("Arial", 'B', 11)
         pdf.cell(0, 10, limpar_texto_pdf(subtitle), 0, 1, 'L')
         
+        # Ajuste de largura baseado no número de colunas
+        num_cols = len(df.columns)
+        col_w = 190 / num_cols
+        
+        # Cabeçalho
         pdf.set_font("Arial", 'B', 9)
-        col_w = 190 / len(df.columns)
         for col in df.columns:
-            pdf.cell(col_w, 8, limpar_texto_pdf(col), 1, 0, 'C')
+            pdf.cell(col_w, 10, limpar_texto_pdf(col), 1, 0, 'C')
         pdf.ln()
         
+        # Linhas da tabela
         pdf.set_font("Arial", '', 8)
         for _, row in df.iterrows():
+            # Altura da linha precisa ser calculada pela maior célula da linha (neste caso, fixamos)
+            line_height = 8 
+            
+            # Precisamos salvar a posição X para voltar no início da linha
+            x_pos = pdf.get_x()
+            y_pos = pdf.get_y()
+            
+            # MultiCell não avança automaticamente como o cell(), então controlamos a posição
             for item in row:
-                pdf.cell(col_w, 8, limpar_texto_pdf(item), 1, 0, 'C')
-            pdf.ln()
+                # O MultiCell ajusta o texto dentro da largura col_w
+                pdf.multi_cell(col_w, line_height, limpar_texto_pdf(item), 1, 'C')
+                # Move a posição Y de volta para a mesma altura da linha
+                pdf.set_xy(pdf.get_x() + col_w, y_pos)
+            
+            # Pula para a linha de baixo após preencher todas as colunas
+            pdf.set_xy(x_pos, y_pos + line_height)
+            
         pdf.ln(5)
         
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
