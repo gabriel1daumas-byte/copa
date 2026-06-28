@@ -178,43 +178,45 @@ def construir_pdf(titulo_principal, dfs_dict):
         pdf.set_font("Arial", 'B', 11)
         pdf.cell(0, 10, limpar_texto_pdf(nome_tabela), 0, 1, 'L')
         
-        # Largura total útil da página A4 (210mm total - 20mm margens)
-        largura_total = 190
+        # Largura total 190mm
         num_cols = len(df.columns)
-        col_w = largura_total / num_cols
+        col_w = 190 / num_cols
         
-        # Cabeçalho da tabela
+        # Cabeçalho
         pdf.set_font("Arial", 'B', 8)
         for col in df.columns:
             pdf.cell(col_w, 8, limpar_texto_pdf(col), 1, 0, 'C')
         pdf.ln()
         
-        # Linhas da tabela
+        # Linhas da tabela com altura fixa para evitar transbordo
         pdf.set_font("Arial", '', 7)
         for _, row in df.iterrows():
-            line_height = 7
+            line_height = 8
             
-            # Verifica se precisa de nova página antes de desenhar a linha
+            # Verifica quebra de página
             if pdf.get_y() > 270: 
                 pdf.add_page()
-                # Repete o cabeçalho na nova página
                 pdf.set_font("Arial", 'B', 8)
                 for col in df.columns: pdf.cell(col_w, 8, limpar_texto_pdf(col), 1, 0, 'C')
                 pdf.ln()
                 pdf.set_font("Arial", '', 7)
 
-            # Salva posição inicial da linha
-            x_start = pdf.get_x()
-            y_start = pdf.get_y()
+            # Salva posição X inicial
+            x_inicial = pdf.get_x()
+            y_inicial = pdf.get_y()
             
             # Desenha as células da linha
-            for item in row:
-                # O parâmetro 'L' no multi_cell com alinhamento ajuda a manter o texto contido
-                pdf.multi_cell(col_w, line_height, limpar_texto_pdf(item), 1, 'C')
-                pdf.set_xy(pdf.get_x() + col_w, y_start)
-            
-            # Pula para a próxima linha
-            pdf.set_xy(x_start, y_start + line_height)
+            for i, val in enumerate(row):
+                # O segredo é usar cell() com um tamanho pequeno ou cortar o texto 
+                # se ele for grande demais para a célula
+                texto = limpar_texto_pdf(val)
+                # Corta o texto para não estourar a largura da célula
+                if pdf.get_string_width(texto) > col_w - 2:
+                    texto = texto[:int((col_w-2)/2)] + ".." 
+                
+                pdf.cell(col_w, line_height, texto, 1, 0, 'C')
+                
+            pdf.ln(line_height) # Pula para a próxima linha
             
         pdf.ln(5)
         
