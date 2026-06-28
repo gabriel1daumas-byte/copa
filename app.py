@@ -734,7 +734,7 @@ else:
                     
                     st.dataframe(pd.DataFrame(rows_galera_videntes), use_container_width=True, hide_index=True)
 
-    # --- 3. BÔNUS 2: CHAVE FINAL (COM TRAVA AUTOMÁTICA) ---
+    # --- 3. BÔNUS 2: CHAVE FINAL (COM TRAVA AUTOMÁTICA E ABA DA GALERA) ---
     elif menu == "Bônus 2: Chave Final":
         st.title("🛤️ Caminho para a Glória — Simulador do Mata-Mata")
         
@@ -744,8 +744,9 @@ else:
         if jogos_r32:
             fechamentos_r32 = [converter_para_br(j['horario_fechamento']) for j in jogos_r32 if j.get('horario_fechamento')]
             if fechamentos_r32:
-                inicio_primeiro_jogo_mata = min(fechamentos_r32) + timedelta(minutes=30)
-                if agora >= inicio_primeiro_jogo_mata:
+                # O fechamento real já é o horário limite da aposta (30 minutos antes da bola rolar)
+                primeiro_fechamento_alvo = min(fechamentos_r32)
+                if agora >= primeiro_fechamento_alvo:
                     passou_do_prazo_r32 = True
 
         status_trava_componente = False
@@ -758,95 +759,172 @@ else:
             status_trava_componente = True
         else:
             st.info("🔓 Mercado Aberto! Faça sua previsão de quem vai dominar as fases eliminatórias até a Grande Final!")
-        
-        if not jogos_r32 or len(jogos_r32) != 16:
-            st.warning("⏳ Aguardando o Super Admin definir e cadastrar os 16 confrontos oficiais dos Trinta-e-dois-avos no painel de controle para renderizar a árvore.")
-        else:
-            jogos_r32_ordenados = sorted(jogos_r32, key=lambda x: x['id'])
             
-            b2_salvo = supabase.table("bonus_chave").select("*").eq("email_usuario", st.session_state.email_usuario).execute().data
-            meu_b2 = b2_salvo[0] if b2_salvo else {}
-            def parse_lista(campo): return meu_b2.get(campo, '').split(',') if meu_b2.get(campo) else []
+        aba_meus_b2, aba_galera_b2 = st.tabs(["🔒 Minha Árvore", "👥 Árvore da Galera"])
 
-            sel_oit = parse_lista('oitavas')
-            sel_qua = parse_lista('quartas')
-            sel_sem = parse_lista('semis')
-            sel_fin = parse_lista('finalistas')
-            sel_cam = meu_b2.get('campeao', '')
+        with aba_meus_b2:
+            if not jogos_r32 or len(jogos_r32) != 16:
+                st.warning("⏳ Aguardando o Super Admin definir e cadastrar os 16 confrontos oficiais dos Trinta-e-dois-avos no painel de controle para renderizar a árvore.")
+            else:
+                jogos_r32_ordenados = sorted(jogos_r32, key=lambda x: x['id'])
+                
+                b2_salvo = supabase.table("bonus_chave").select("*").eq("email_usuario", st.session_state.email_usuario).execute().data
+                meu_b2 = b2_salvo[0] if b2_salvo else {}
+                def parse_lista(campo): return meu_b2.get(campo, '').split(',') if meu_b2.get(campo) else []
 
-            st.subheader("1. Rodada de 32 (Defina quem avança para as Oitavas)")
-            vencedores_r32 = []
-            c_a, c_b = st.columns(2)
-            for idx, j in enumerate(jogos_r32_ordenados):
-                col_alvo = c_a if idx < 8 else c_b
-                with col_alvo:
-                    opcoes = [j['time_casa'], j['time_fora']]
-                    idx_p = opcoes.index(sel_oit[idx]) if idx < len(sel_oit) and sel_oit[idx] in opcoes else 0
-                    venc = st.selectbox(f"Jogo {idx+1}: {j['time_casa']} x {j['time_fora']}", opcoes, index=idx_p, key=f"b2_r32_{j['id']}", disabled=status_trava_componente)
-                    vencedores_r32.append(venc)
+                sel_oit = parse_lista('oitavas')
+                sel_qua = parse_lista('quartas')
+                sel_sem = parse_lista('semis')
+                sel_fin = parse_lista('finalistas')
+                sel_cam = meu_b2.get('campeao', '')
 
-            st.write("---")
-            st.subheader("2. Rodada de 16 — Oitavas (Defina quem avança para as Quartas)")
-            vencedores_r16 = []
-            c_c, c_d = st.columns(2)
-            for i in range(0, 16, 2):
-                col_alvo = c_c if i < 8 else c_d
-                with col_alvo:
-                    t1, t2 = vencedores_r32[i], vencedores_r32[i+1]
-                    opcoes = [t1, t2]
-                    pos_lista = i // 2
-                    idx_p = opcoes.index(sel_qua[pos_lista]) if pos_lista < len(sel_qua) and sel_qua[pos_lista] in opcoes else 0
-                    venc = st.selectbox(f"Mata {pos_lista+1}: {t1} x {t2}", opcoes, index=idx_p, key=f"b2_r16_{i}", disabled=status_trava_componente)
-                    vencedores_r16.append(venc)
+                st.subheader("1. Rodada de 32 (Defina quem avança para as Oitavas)")
+                vencedores_r32 = []
+                c_a, c_b = st.columns(2)
+                for idx, j in enumerate(jogos_r32_ordenados):
+                    col_alvo = c_a if idx < 8 else c_b
+                    with col_alvo:
+                        opcoes = [j['time_casa'], j['time_fora']]
+                        idx_p = opcoes.index(sel_oit[idx]) if idx < len(sel_oit) and sel_oit[idx] in opcoes else 0
+                        venc = st.selectbox(f"Jogo {idx+1}: {j['time_casa']} x {j['time_fora']}", opcoes, index=idx_p, key=f"b2_r32_{j['id']}", disabled=status_trava_componente)
+                        vencedores_r32.append(venc)
 
-            st.write("---")
-            st.subheader("3. Rodada de 8 — Quartas (Defina quem avança para as Semis)")
-            vencedores_r8 = []
-            c_e, c_f = st.columns(2)
-            for i in range(0, 8, 2):
-                col_alvo = c_e if i < 4 else c_f
-                with col_alvo:
-                    t1, t2 = vencedores_r16[i], vencedores_r16[i+1]
-                    opcoes = [t1, t2]
-                    pos_lista = i // 2
-                    idx_p = opcoes.index(sel_sem[pos_lista]) if pos_lista < len(sel_sem) and sel_sem[pos_lista] in opcoes else 0
-                    venc = st.selectbox(f"Quartas {pos_lista+1}: {t1} x {t2}", opcoes, index=idx_p, key=f"b2_r8_{i}", disabled=status_trava_componente)
-                    vencedores_r8.append(venc)
+                st.write("---")
+                st.subheader("2. Rodada de 16 — Oitavas (Defina quem avança para as Quartas)")
+                vencedores_r16 = []
+                c_c, c_d = st.columns(2)
+                for i in range(0, 16, 2):
+                    col_alvo = c_c if i < 8 else c_d
+                    with col_alvo:
+                        t1, t2 = vencedores_r32[i], vencedores_r32[i+1]
+                        opcoes = [t1, t2]
+                        pos_lista = i // 2
+                        idx_p = opcoes.index(sel_qua[pos_lista]) if pos_lista < len(sel_qua) and sel_qua[pos_lista] in opcoes else 0
+                        venc = st.selectbox(f"Mata {pos_lista+1}: {t1} x {t2}", opcoes, index=idx_p, key=f"b2_r16_{i}", disabled=status_trava_componente)
+                        vencedores_r16.append(venc)
 
-            st.write("---")
-            st.subheader("4. Rodada de 4 — Semifinais (Defina os 2 Finalistas)")
-            vencedores_r4 = []
-            c_g, c_h = st.columns(2)
-            for i in range(0, 4, 2):
-                col_alvo = c_g if i == 0 else c_h
-                with col_alvo:
-                    t1, t2 = vencedores_r8[i], vencedores_r8[i+1]
-                    opcoes = [t1, t2]
-                    pos_lista = i // 2
-                    idx_p = opcoes.index(sel_fin[pos_lista]) if pos_lista < len(sel_fin) and sel_fin[pos_lista] in opcoes else 0
-                    venc = st.selectbox(f"Semi {pos_lista+1}: {t1} x {t2}", opcoes, index=idx_p, key=f"b2_r4_{i}", disabled=status_trava_componente)
-                    vencedores_r4.append(venc)
+                st.write("---")
+                st.subheader("3. Rodada de 8 — Quartas (Defina quem avança para as Semis)")
+                vencedores_r8 = []
+                c_e, c_f = st.columns(2)
+                for i in range(0, 8, 2):
+                    col_alvo = c_e if i < 4 else c_f
+                    with col_alvo:
+                        t1, t2 = vencedores_r16[i], vencedores_r16[i+1]
+                        opcoes = [t1, t2]
+                        pos_lista = i // 2
+                        idx_p = opcoes.index(sel_sem[pos_lista]) if pos_lista < len(sel_sem) and sel_sem[pos_lista] in opcoes else 0
+                        venc = st.selectbox(f"Quartas {pos_lista+1}: {t1} x {t2}", opcoes, index=idx_p, key=f"b2_r8_{i}", disabled=status_trava_componente)
+                        vencedores_r8.append(venc)
 
-            st.write("---")
-            st.subheader("🏆 5. Grande Final (Defina o Campeão do Mundo)")
-            tf1, tf2 = vencedores_r4[0], vencedores_r4[1]
-            opcoes_f = [tf1, tf2]
-            idx_p = opcoes_f.index(sel_cam) if sel_cam in opcoes_f else 0
-            campeao_escolhido = st.selectbox(f"Disputa do Título: {tf1} x {tf2}", opcoes_f, index=idx_p, key="b2_final_master", disabled=status_trava_componente)
+                st.write("---")
+                st.subheader("4. Rodada de 4 — Semifinais (Defina os 2 Finalistas)")
+                vencedores_r4 = []
+                c_g, c_h = st.columns(2)
+                for i in range(0, 4, 2):
+                    col_alvo = c_g if i == 0 else c_h
+                    with col_alvo:
+                        t1, t2 = vencedores_r8[i], vencedores_r8[i+1]
+                        opcoes = [t1, t2]
+                        pos_lista = i // 2
+                        idx_p = opcoes.index(sel_fin[pos_lista]) if pos_lista < len(sel_fin) and sel_fin[pos_lista] in opcoes else 0
+                        venc = st.selectbox(f"Semi {pos_lista+1}: {t1} x {t2}", opcoes, index=idx_p, key=f"b2_r4_{i}", disabled=status_trava_componente)
+                        vencedores_r4.append(venc)
 
-            st.write("")
-            if not status_trava_componente:
-                if st.button("💾 Gravar Árvore do Mata-Mata Completa", use_container_width=True, type="primary"):
-                    dados_chave = {
-                        "oitavas": ",".join(vencedores_r32), "quartas": ",".join(vencedores_r16),
-                        "semis": ",".join(vencedores_r8), "finalistas": ",".join(vencedores_r4),
-                        "campeao": campeao_escolhido
-                    }
-                    if b2_salvo: supabase.table("bonus_chave").update(dados_chave).eq("email_usuario", st.session_state.email_usuario).execute()
+                st.write("---")
+                st.subheader("🏆 5. Grande Final (Defina o Campeão do Mundo)")
+                tf1, tf2 = vencedores_r4[0], vencedores_r4[1]
+                opcoes_f = [tf1, tf2]
+                idx_p = opcoes_f.index(sel_cam) if sel_cam in opcoes_f else 0
+                campeao_escolhido = st.selectbox(f"Disputa do Título: {tf1} x {tf2}", opcoes_f, index=idx_p, key="b2_final_master", disabled=status_trava_componente)
+
+                st.write("")
+                if not status_trava_componente:
+                    if st.button("💾 Gravar Árvore do Mata-Mata Completa", use_container_width=True, type="primary"):
+                        dados_chave = {
+                            "oitavas": ",".join(vencedores_r32), "quartas": ",".join(vencedores_r16),
+                            "semis": ",".join(vencedores_r8), "finalistas": ",".join(vencedores_r4),
+                            "campeao": campeao_escolhido
+                        }
+                        if b2_salvo: supabase.table("bonus_chave").update(dados_chave).eq("email_usuario", st.session_state.email_usuario).execute()
+                        else:
+                            dados_chave["email_usuario"] = st.session_state.email_usuario
+                            supabase.table("bonus_chave").insert(dados_chave).execute()
+                        st.success("Sua árvore de palpites foi salva com sucesso!")
+
+        with aba_galera_b2:
+            st.subheader("Espiar as Previsões da Galera no Mata-Mata")
+            
+            membros = buscar_dados_paginados("membros_bolao", "email_usuario", "id_bolao", st.session_state.bolao_ativo_id)
+            emails = [m['email_usuario'].lower() for m in membros]
+            
+            if not emails:
+                st.info("Nenhum participante neste grupo.")
+            else:
+                usuarios_dados = buscar_dados_paginados("usuarios", "email, nome", "email", emails)
+                mapa_nomes = {u['email']: u['nome'] for u in usuarios_dados}
+                
+                bonus2_galera = buscar_dados_paginados("bonus_chave", "*", "email_usuario", emails)
+                
+                opcoes_fases_b2 = {
+                    "Classificados para Oitavas": {"fase_db": "Trinta-e-dois-avos de Final", "col": "oitavas"},
+                    "Classificados para Quartas": {"fase_db": "Oitavas de Final", "col": "quartas"},
+                    "Classificados para Semis": {"fase_db": "Quartas de Final", "col": "semis"},
+                    "Finalistas": {"fase_db": "Semifinais", "col": "finalistas"},
+                    "Campeão": {"fase_db": "Final", "col": "campeao"}
+                }
+                
+                fase_selecionada_b2 = st.selectbox("🎯 Escolha qual fase deseja espiar:", list(opcoes_fases_b2.keys()), key="sb_galera_b2")
+                
+                config_fase = opcoes_fases_b2[fase_selecionada_b2]
+                fase_oficial = config_fase["fase_db"]
+                coluna_b2 = config_fase["col"]
+                
+                jogos_fase_alvo = buscar_dados_paginados("jogos_copa", "*", "fase", fase_oficial)
+                
+                is_admin = st.session_state.is_admin_bolao_ativo or st.session_state.is_superadmin
+                is_liberado_galera = False
+                
+                if is_admin:
+                    is_liberado_galera = True
+                    if not jogos_fase_alvo:
+                        st.warning(f"⚠️ Visão de Admin: A fase '{fase_oficial}' ainda não foi cadastrada no sistema.")
                     else:
-                        dados_chave["email_usuario"] = st.session_state.email_usuario
-                        supabase.table("bonus_chave").insert(dados_chave).execute()
-                    st.success("Sua árvore de palpites foi salva com sucesso!")
+                        fechamentos_alvo = [converter_para_br(j['horario_fechamento']) for j in jogos_fase_alvo if j.get('horario_fechamento')]
+                        if fechamentos_alvo and agora < min(fechamentos_alvo):
+                            st.warning(f"⚠️ Visão de Admin: O mercado do primeiro jogo desta fase ainda não fechou para os usuários normais.")
+                else:
+                    if not jogos_fase_alvo:
+                        is_liberado_galera = False
+                    else:
+                        fechamentos_alvo = [converter_para_br(j['horario_fechamento']) for j in jogos_fase_alvo if j.get('horario_fechamento')]
+                        if fechamentos_alvo:
+                            primeiro_fechamento_alvo = min(fechamentos_alvo)
+                            if agora >= primeiro_fechamento_alvo:
+                                is_liberado_galera = True
+
+                if not is_liberado_galera:
+                    if not jogos_fase_alvo:
+                        st.error(f"🔒 A previsão de '{fase_selecionada_b2}' está oculta. Os confrontos da fase '{fase_oficial}' ainda não foram cadastrados.")
+                    else:
+                        st.warning(f"🔒 Palpites ocultos. A previsão de '{fase_selecionada_b2}' será revelada automaticamente assim que fechar o mercado do primeiro jogo da fase '{fase_oficial}'.")
+                else:
+                    rows_galera_b2 = []
+                    for em in emails:
+                        b2_user = next((b for b in bonus2_galera if b['email_usuario'] == em), None)
+                        nome_jogador = mapa_nomes.get(em, em)
+                        
+                        if not b2_user or not b2_user.get(coluna_b2):
+                            previsao_str = "Não preencheu"
+                        else:
+                            previsao_str = b2_user[coluna_b2].replace(",", ", ")
+                        
+                        rows_galera_b2.append({
+                            "Jogador": nome_jogador,
+                            f"Palpite ({fase_selecionada_b2})": previsao_str
+                        })
+                    
+                    st.dataframe(pd.DataFrame(rows_galera_b2), use_container_width=True, hide_index=True)
 
     # --- 4. CLASSIFICAÇÃO GERAL ---
     elif menu == "Classificação Geral":
@@ -1007,6 +1085,7 @@ else:
                 st.subheader("🔮 Alerta: Previsões Incompletas na Árvore do Mata-Mata (Bônus 2)")
                 bonus2_dados = buscar_dados_paginados("bonus_chave", "email_usuario, campeao", "email_usuario", emails)
                 
+                # Se a pessoa tem um registro e a coluna campeao não está vazia, consideramos como feito
                 feitos_b2 = {b['email_usuario'].lower(): True for b in bonus2_dados if b.get('campeao')}
                 
                 bonus2_faltando = []
