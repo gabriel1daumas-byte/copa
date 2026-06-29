@@ -167,7 +167,6 @@ def construir_pdf(titulo_principal, dfs_dict):
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     
-    # Título Principal
     pdf.set_font("Arial", 'B', 14)
     pdf.cell(0, 10, limpar_texto_pdf(titulo_principal), 0, 1, 'C')
     pdf.ln(5)
@@ -178,13 +177,11 @@ def construir_pdf(titulo_principal, dfs_dict):
         pdf.set_font("Arial", 'B', 11)
         pdf.cell(0, 10, limpar_texto_pdf(nome_tabela), 0, 1, 'L')
         
-        # --- MÁGICA DOS TAMANHOS DE COLUNA DINÂMICOS ---
-        total_w = 190 # Largura total útil da página A4
+        total_w = 190 
         cols = list(df.columns)
         num_cols = len(cols)
         col_w = []
         
-        # Se for a Tabela de JOGOS, aplicamos os tamanhos personalizados
         if "Confronto" in cols:
             for c in cols:
                 if c == "Fase": col_w.append(28 if num_cols == 6 else 35)
@@ -196,7 +193,6 @@ def construir_pdf(titulo_principal, dfs_dict):
                 elif c == "Classificado": col_w.append(30)
                 else: col_w.append(total_w / num_cols)
         
-        # Se for a Tabela de BÔNUS
         elif "Gabarito Oficial" in cols or "Gabarito" in cols or "Classificados Oficiais" in cols:
             for c in cols:
                 if c in ["Grupo", "Fase"]: col_w.append(25)
@@ -205,29 +201,24 @@ def construir_pdf(titulo_principal, dfs_dict):
                 elif c in ["Pontos"]: col_w.append(15)
                 else: col_w.append(total_w / num_cols)
                 
-        # Se for a Tabela de RESUMO
         elif "Categoria" in cols:
             col_w = [140, 50]
             
         else:
             col_w = [total_w / num_cols] * num_cols
 
-        # Normaliza a largura para garantir exatamente 190mm
         fator = total_w / sum(col_w)
         col_w = [w * fator for w in col_w]
 
-        # Cabeçalho da Tabela
         pdf.set_font("Arial", 'B', 8)
         for i, col in enumerate(cols):
             pdf.cell(col_w[i], 8, limpar_texto_pdf(col), 1, 0, 'C')
         pdf.ln()
         
-        # Linhas da Tabela
         pdf.set_font("Arial", '', 7)
         for _, row in df.iterrows():
             line_height = 5
             
-            # Checa limite da página para repetir cabeçalho
             if pdf.get_y() > 260: 
                 pdf.add_page()
                 pdf.set_font("Arial", 'B', 8)
@@ -240,7 +231,6 @@ def construir_pdf(titulo_principal, dfs_dict):
             y_inicial = pdf.get_y()
             max_y = y_inicial
             
-            # Alinhamento (Listas de Bônus ficam melhor à esquerda, placares ao centro)
             align = 'L' if "Bônus" in nome_tabela else 'C'
             
             for i, val in enumerate(row):
@@ -252,7 +242,6 @@ def construir_pdf(titulo_principal, dfs_dict):
                 
                 x_inicial += col_w[i]
             
-            # Move para a próxima linha usando o ponto mais baixo atingido
             pdf.set_xy(10, max_y)
             
         pdf.ln(5)
@@ -624,10 +613,10 @@ else:
     # --- 1C. ABA: PALPITES DA GALERA ---
     elif menu == "Palpites da Galera":
         st.title("👥 Palpites de Todos os Participantes")
-        membros = buscar_dados_paginados("membros_bolao", "email_usuario", "id_bolao", st.session_state.bolao_ativo_id)
-        emails = [m['email_usuario'].lower() for m in membros]
+        membros = buscar_dados_paginados("membros_bolao", "email_usuario, status", "id_bolao", st.session_state.bolao_ativo_id)
+        emails = [m['email_usuario'].lower() for m in membros if m.get('status', 1) == 1]
         
-        if not emails: st.info("Nenhum participante neste grupo.")
+        if not emails: st.info("Nenhum participante ativo neste grupo.")
         else:
             usuarios_dados = buscar_dados_paginados("usuarios", "email, nome", "email", emails)
             mapa_nomes = {u['email']: u['nome'] for u in usuarios_dados}
@@ -748,10 +737,10 @@ else:
                 
         with aba_galera:
             st.subheader("Espiar as Previsões da Galera")
-            membros = buscar_dados_paginados("membros_bolao", "email_usuario", "id_bolao", st.session_state.bolao_ativo_id)
-            emails = [m['email_usuario'].lower() for m in membros]
+            membros = buscar_dados_paginados("membros_bolao", "email_usuario, status", "id_bolao", st.session_state.bolao_ativo_id)
+            emails = [m['email_usuario'].lower() for m in membros if m.get('status', 1) == 1]
             
-            if not emails: st.info("Nenhum participante neste grupo.")
+            if not emails: st.info("Nenhum participante ativo neste grupo.")
             else:
                 usuarios_dados = buscar_dados_paginados("usuarios", "email, nome", "email", emails)
                 mapa_nomes = {u['email']: u['nome'] for u in usuarios_dados}
@@ -879,10 +868,10 @@ else:
 
         with aba_galera_b2:
             st.subheader("Espiar as Previsões da Galera")
-            membros = buscar_dados_paginados("membros_bolao", "email_usuario", "id_bolao", st.session_state.bolao_ativo_id)
-            emails = [m['email_usuario'].lower() for m in membros]
+            membros = buscar_dados_paginados("membros_bolao", "email_usuario, status", "id_bolao", st.session_state.bolao_ativo_id)
+            emails = [m['email_usuario'].lower() for m in membros if m.get('status', 1) == 1]
             
-            if not emails: st.info("Nenhum participante neste grupo.")
+            if not emails: st.info("Nenhum participante ativo neste grupo.")
             else:
                 usuarios_dados = buscar_dados_paginados("usuarios", "email, nome", "email", emails)
                 mapa_nomes = {u['email']: u['nome'] for u in usuarios_dados}
@@ -931,8 +920,9 @@ else:
     # --- 4. CLASSIFICAÇÃO GERAL ---
     elif menu == "Classificação Geral":
         st.title(f"🏆 Classificação - {st.session_state.bolao_ativo_nome}")
-        membros = buscar_dados_paginados("membros_bolao", "email_usuario", "id_bolao", st.session_state.bolao_ativo_id)
-        emails = [m['email_usuario'].lower() for m in membros]
+        membros = buscar_dados_paginados("membros_bolao", "email_usuario, status", "id_bolao", st.session_state.bolao_ativo_id)
+        emails = [m['email_usuario'].lower() for m in membros if m.get('status', 1) == 1]
+        
         if emails:
             usuarios_dados = buscar_dados_paginados("usuarios", "email, nome", "email", emails)
             jogos_enc = buscar_dados_paginados("jogos_copa", "*")
@@ -965,40 +955,59 @@ else:
             df_final = pd.DataFrame(rank_final).sort_values("Pontos Totais", ascending=False).reset_index(drop=True)
             df_final.index += 1
             st.dataframe(df_final, use_container_width=True)
-        else: st.info("Nenhum participante neste grupo.")
+        else: st.info("Nenhum participante ativo neste grupo.")
 
     # --- 5. PAINEL DE ADMIN DO GRUPO ---
     elif menu == "⚙️ Admin do Grupo":
         st.title("⚙️ Painel de Administração da Liga")
-        membros = buscar_dados_paginados("membros_bolao", "email_usuario", "id_bolao", st.session_state.bolao_ativo_id)
-        emails = [m['email_usuario'].lower() for m in membros]
+        membros = buscar_dados_paginados("membros_bolao", "email_usuario, status, is_admin", "id_bolao", st.session_state.bolao_ativo_id)
+        emails_todos = [m['email_usuario'].lower() for m in membros]
+        emails_ativos = [m['email_usuario'].lower() for m in membros if m.get('status', 1) == 1]
         
-        if not emails:
+        if not emails_todos:
             st.info("Nenhum participante associado a esta liga corporativa ainda.")
         else:
-            usuarios_dados = buscar_dados_paginados("usuarios", "email, nome", "email", emails)
+            usuarios_dados = buscar_dados_paginados("usuarios", "email, nome", "email", emails_todos)
             mapa_nomes_adm = {u['email']: u['nome'] for u in usuarios_dados}
+            usuarios_ativos_dados = [u for u in usuarios_dados if u['email'] in emails_ativos]
             all_jogos_adm = buscar_dados_paginados("jogos_copa", "*")
             
             adm_tab1, adm_tab2, adm_tab3, adm_tab4, adm_tab5, adm_tab6 = st.tabs([
-                "➕ Autorizar", "📅 Do Dia", "⏳ Pendentes (24h)", "🔮 Bônus 2", "📊 Auditoria", "🏆 Resultados"
+                "➕ Gestão de Membros", "📅 Do Dia", "⏳ Pendentes (24h)", "🔮 Bônus 2", "📊 Auditoria", "🏆 Resultados"
             ])
             
             with adm_tab1:
-                st.subheader("Pré-autorizar Jogadores na Liga")
+                st.subheader("Autorizar Novos Jogadores")
                 with st.form("form_add_email_liga"):
                     novo_email = st.text_input("E-mail corporativo do participante").lower().strip()
                     if st.form_submit_button("Autorizar na Liga", use_container_width=True):
                         if novo_email:
                             if not supabase.table("membros_bolao").select("*").eq("id_bolao", st.session_state.bolao_ativo_id).eq("email_usuario", novo_email).execute().data:
-                                if not supabase.table("usuarios").select("email").eq("email", novo_email).execute().data: supabase.table("usuarios").insert({"email": novo_email, "nome": "Aguardando..."}).execute()
-                                supabase.table("membros_bolao").insert({"id_bolao": st.session_state.bolao_ativo_id, "email_usuario": novo_email, "is_admin": False}).execute()
+                                if not supabase.table("usuarios").select("email").eq("email", novo_email).execute().data: 
+                                    supabase.table("usuarios").insert({"email": novo_email, "nome": "Aguardando..."}).execute()
+                                supabase.table("membros_bolao").insert({"id_bolao": st.session_state.bolao_ativo_id, "email_usuario": novo_email, "is_admin": False, "status": 1}).execute()
                                 st.success(f"✅ O usuário '{novo_email}' foi autorizado nesta liga com sucesso!"); st.rerun()
                             else: st.warning(f"⚠️ O e-mail '{novo_email}' já está autorizado nesta liga!")
+                
                 st.write("---")
-                st.write("#### 👥 Jogadores Autorizados")
-                lista_jogadores = [{"E-mail": em, "Nome": mapa_nomes_adm.get(em, "Desconhecido"), "Status": "⏳ Aguardando Cadastro" if mapa_nomes_adm.get(em, "Desconhecido") == "Aguardando..." else "✅ Ativo"} for em in emails]
-                st.dataframe(pd.DataFrame(lista_jogadores), use_container_width=True, hide_index=True)
+                st.write("#### 👥 Ativar / Desativar Jogadores")
+                st.caption("Desative o botão para remover o jogador da classificação e das cobranças. Clique em Salvar no final da lista.")
+                with st.form("form_status_usuarios"):
+                    novos_status = {}
+                    for m in membros:
+                        em = m['email_usuario'].lower()
+                        nome = mapa_nomes_adm.get(em, "Desconhecido")
+                        tag = " (⏳ Aguardando Cadastro)" if nome == "Aguardando..." else ""
+                        st_atual = m.get('status', 1) == 1
+                        novos_status[em] = st.checkbox(f"{nome}{tag} - {em}", value=st_atual, key=f"chk_st_{em}")
+                    
+                    if st.form_submit_button("💾 Salvar Alterações de Status", use_container_width=True):
+                        for em, is_active in novos_status.items():
+                            val = 1 if is_active else 0
+                            # Atualiza todos que foram alterados na tela
+                            supabase.table("membros_bolao").update({"status": val}).eq("id_bolao", st.session_state.bolao_ativo_id).eq("email_usuario", em).execute()
+                        st.success("Status atualizados com sucesso!")
+                        st.rerun()
                                 
             with adm_tab2:
                 st.subheader("📅 Cronograma de Partidas de Hoje")
@@ -1023,7 +1032,9 @@ else:
                     palpites_proximos = buscar_dados_paginados("palpites_copa", "*", "id_jogo", ids_proximos)
                     palpites_feitos = {(p['email_usuario'].lower(), p['id_jogo']) for p in palpites_proximos}
                     proximos_faltando = []
-                    for u in usuarios_dados:
+                    
+                    # Usa apenas usuários ativos para cobrar
+                    for u in usuarios_ativos_dados:
                         u_email = u['email'].lower()
                         if u['nome'] == "Aguardando...": continue
                         jogos_esquecidos = [f"{j['time_casa']} x {j['time_fora']}" for j in jogos_proximos if (u_email, j['id']) not in palpites_feitos]
@@ -1041,9 +1052,10 @@ else:
                         
             with adm_tab4:
                 st.subheader("🔮 Alerta: Previsões Incompletas na Árvore do Mata-Mata (Bônus 2)")
-                bonus2_dados = buscar_dados_paginados("bonus_chave", "email_usuario, campeao", "email_usuario", emails)
+                bonus2_dados = buscar_dados_paginados("bonus_chave", "email_usuario, campeao", "email_usuario", emails_ativos)
                 feitos_b2 = {b['email_usuario'].lower(): True for b in bonus2_dados if b.get('campeao')}
-                bonus2_faltando = [{"Jogador": u['nome'], "E-mail": u['email'].lower()} for u in usuarios_dados if u['nome'] != "Aguardando..." and not feitos_b2.get(u['email'].lower())]
+                # Usa apenas usuários ativos para cobrar
+                bonus2_faltando = [{"Jogador": u['nome'], "E-mail": u['email'].lower()} for u in usuarios_ativos_dados if u['nome'] != "Aguardando..." and not feitos_b2.get(u['email'].lower())]
                         
                 if not bonus2_faltando: st.success("🥇 Perfeito! Absolutamente todos finalizaram a Árvore do Mata-Mata!")
                 else:
@@ -1057,7 +1069,9 @@ else:
 
             with adm_tab5:
                 st.subheader("📊 Relatório de Auditoria de Usuário")
-                user_relatorio = st.selectbox("Selecione o jogador:", usuarios_dados, format_func=lambda x: x['nome'], key="rel_user_select")
+                
+                # Permite ver relatório de todos, mas avisa se está inativo no selectbox
+                user_relatorio = st.selectbox("Selecione o jogador:", usuarios_dados, format_func=lambda x: f"{x['nome']} {'(Inativo)' if x['email'].lower() not in emails_ativos else ''}", key="rel_user_select")
                 email_alvo = user_relatorio['email']
                 filtro_rel = st.radio("Filtro de Relatório:", ["Todos", "Fase de Grupos", "Mata-Mata", "Bônus 1", "Bônus 2"], horizontal=True, key="filtro_rel_usuario")
                 
@@ -1088,87 +1102,135 @@ else:
                     ])
                     st.table(resumo_df)
                     dfs_para_pdf["Resumo Consolidado"] = resumo_df
+                    st.divider()
                     
                     if filtro_rel in ["Todos", "Fase de Grupos", "Mata-Mata"]:
                         jogos_rel = []
                         for j in ordenar_jogos(all_jogos_adm):
+                            if not j.get('times_confirmados'): continue
                             if filtro_rel == "Fase de Grupos" and j.get('is_mata_mata'): continue
                             if filtro_rel == "Mata-Mata" and not j.get('is_mata_mata'): continue
+                            
                             p = mapa_palpites_user.get(str(j['id']))
                             
-                            palpite_str = f"{p['gols_casa']} x {p['gols_fora']}" if p else "-"
-                            classif_palpite = p.get('classificado', '-') if p and j.get('is_mata_mata') else "-"
-                            
+                            if p:
+                                palpite_str = f"{p['gols_casa']} x {p['gols_fora']}"
+                                classif_palpite = p.get('classificado', '-') if j.get('is_mata_mata') else "-"
+                            else:
+                                palpite_str = "Não palpitou"
+                                classif_palpite = "-"
+                                
                             if j.get('gols_casa_real') is not None:
                                 real_str = f"{j['gols_casa_real']} x {j['gols_fora_real']}"
-                                pts = calcular_pontos_matamata(p['gols_casa'] if p else None, p['gols_fora'] if p else None, p.get('classificado') if p else None, j['gols_casa_real'], j['gols_fora_real'], j.get('classificado_real')) if j.get('is_mata_mata') else calcular_pontos_grupos(p['gols_casa'] if p else None, p['gols_fora'] if p else None, j['gols_casa_real'], j['gols_fora_real'])
+                                if j.get('is_mata_mata'):
+                                    pts = calcular_pontos_matamata(p['gols_casa'] if p else None, p['gols_fora'] if p else None, p.get('classificado') if p else None, j['gols_casa_real'], j['gols_fora_real'], j.get('classificado_real'))
+                                else:
+                                    pts = calcular_pontos_grupos(p['gols_casa'] if p else None, p['gols_fora'] if p else None, j['gols_casa_real'], j['gols_fora_real'])
                             else:
                                 real_str = "Aguardando"
                                 pts = "-"
                                 
+                            tipo_fase = j['fase'] if j.get('is_mata_mata') else f"Grupo {get_grupo(j['time_casa'])}"
+                            
                             row_data = {
-                                "Fase": j['fase'] if j.get('is_mata_mata') else f"Grupo {get_grupo(j['time_casa'])}",
+                                "Fase": tipo_fase,
                                 "Confronto": f"{j['time_casa']} x {j['time_fora']}",
                                 "Palpite": palpite_str
                             }
                             if j.get('is_mata_mata') or filtro_rel == "Todos":
                                 row_data["Passa (Mata)"] = classif_palpite
+                                
                             row_data["Resultado Oficial"] = real_str
                             row_data["Pontos"] = str(pts)
                             
                             jogos_rel.append(row_data)
                             
-                        df_jogos = pd.DataFrame(jogos_rel)
-                        if not df_jogos.empty:
-                            st.dataframe(df_jogos, use_container_width=True)
-                            dfs_para_pdf["Jogos e Resultados"] = df_jogos
+                        if jogos_rel:
+                            st.write(f"#### ⚽ Jogos ({filtro_rel if filtro_rel != 'Todos' else 'Grupos e Mata-Mata'})")
+                            df_jrel = pd.DataFrame(jogos_rel)
+                            st.dataframe(df_jrel, use_container_width=True, hide_index=True)
+                            dfs_para_pdf[f"Jogos ({filtro_rel})"] = df_jrel
+                        elif filtro_rel in ["Fase de Grupos", "Mata-Mata"]:
+                            st.info(f"Nenhum jogo encontrado para o filtro: {filtro_rel}.")
 
                     if filtro_rel in ["Todos", "Bônus 1"]:
-                        b1_lista = []
-                        for p in sorted(b1_data, key=lambda x: x['grupo']):
-                            gab = gabaritos_b1.get(p['grupo'])
-                            # Usamos \n para separar cada posição em uma linha
-                            palp_fmt = f"1o {p['pos1']}\n2o {p['pos2']}\n3o {p['pos3']}\n4o {p['pos4']}"
-                            if gab:
-                                gab_fmt = f"1o {gab['pos1']}\n2o {gab['pos2']}\n3o {gab['pos3']}\n4o {gab['pos4']}"
-                                acertos = sum(1 for pos in ['pos1', 'pos2', 'pos3', 'pos4'] if p[pos] == gab[pos])
-                                pts = acertos + (2 if acertos == 4 else 0)
-                            else:
-                                gab_fmt = "Aguardando gabarito"
-                                pts = "-"
-                            b1_lista.append({"Grupo": p['grupo'], "Palpite": palp_fmt, "Gabarito Oficial": gab_fmt, "Pontos": str(pts)})
-                        df_b1 = pd.DataFrame(b1_lista)
-                        if not df_b1.empty:
-                            st.dataframe(df_b1, use_container_width=True)
-                            dfs_para_pdf["Bônus 1 (Videntes)"] = df_b1
+                        st.write("#### 🔮 Bônus 1: Videntes (Classificação dos Grupos)")
+                        if not b1_data:
+                            st.info("O jogador ainda não preencheu o Bônus 1.")
+                        else:
+                            b1_rel = []
+                            for p in sorted(b1_data, key=lambda x: x['grupo']):
+                                grp = p['grupo']
+                                gab = gabaritos_b1.get(grp)
+                                
+                                palp_fmt = f"1o {p['pos1']}\n2o {p['pos2']}\n3o {p['pos3']}\n4o {p['pos4']}"
+                                
+                                if gab:
+                                    gab_fmt = f"1o {gab['pos1']}\n2o {gab['pos2']}\n3o {gab['pos3']}\n4o {gab['pos4']}"
+                                    acertos = sum(1 for pos in ['pos1', 'pos2', 'pos3', 'pos4'] if p[pos] == gab[pos])
+                                    pts = acertos + (2 if acertos == 4 else 0)
+                                else:
+                                    gab_fmt = "Aguardando gabarito"
+                                    pts = "-"
+                                
+                                b1_rel.append({
+                                    "Grupo": grp,
+                                    "Palpite": palp_fmt,
+                                    "Gabarito Oficial": gab_fmt,
+                                    "Pontos": str(pts)
+                                })
+                                
+                            df_b1_rel = pd.DataFrame(b1_rel)
+                            st.dataframe(df_b1_rel, use_container_width=True, hide_index=True)
+                            dfs_para_pdf["Bônus 1 (Videntes)"] = df_b1_rel
 
                     if filtro_rel in ["Todos", "Bônus 2"]:
-                        if b2_data:
+                        st.write("#### 🛤️ Bônus 2: Chave Final")
+                        if not b2_data:
+                            st.info("O jogador ainda não preencheu a Árvore do Mata-Mata.")
+                        else:
                             p = b2_data[0]
-                            b2_lista = []
-                            for f, col in [("Oitavas", "oitavas"), ("Quartas", "quartas"), ("Semis", "semis"), ("Finalistas", "finalistas"), ("Campeão", "campeao")]:
+                            b2_rel = []
+                            
+                            fases_b2_labels = [
+                                ("Oitavas", "oitavas"),
+                                ("Quartas", "quartas"),
+                                ("Semis", "semis"),
+                                ("Finalistas", "finalistas"),
+                                ("Campeão", "campeao")
+                            ]
+                            
+                            for label, col in fases_b2_labels:
                                 palp_val = p.get(col, "")
                                 palp_str = palp_val.replace(",", "\n") if palp_val else "-"
+                                
                                 gab_val = gab_b2.get(col, "")
                                 gab_str = gab_val.replace(",", "\n") if gab_val else "Aguardando gabarito"
+                                
                                 pts = "-"
                                 if gab_val and palp_val:
-                                    m_list, g_list = palp_val.split(','), gab_val.split(',')
+                                    m_list = palp_val.split(',')
+                                    g_list = gab_val.split(',')
                                     if col == 'oitavas': pts = len(set(m_list) & set(g_list)) * 1
                                     elif col == 'quartas': pts = len(set(m_list) & set(g_list)) * 2
                                     elif col == 'semis': pts = len(set(m_list) & set(g_list)) * 3
                                     elif col == 'finalistas': pts = len(set(m_list) & set(g_list)) * 5
                                     elif col == 'campeao': pts = 10 if palp_val == gab_val else 0
-                                b2_lista.append({"Fase": f, "Palpite": palp_str, "Gabarito Oficial": gab_str, "Pontos": str(pts)})
-                            df_b2 = pd.DataFrame(b2_lista)
-                            if not df_b2.empty:
-                                st.dataframe(df_b2, use_container_width=True)
-                                dfs_para_pdf["Bônus 2 (Chave Final)"] = df_b2
+                                    
+                                b2_rel.append({
+                                    "Fase": label,
+                                    "Palpite": palp_str,
+                                    "Gabarito Oficial": gab_str,
+                                    "Pontos": str(pts)
+                                })
+                                
+                            df_b2_rel = pd.DataFrame(b2_rel)
+                            st.dataframe(df_b2_rel, use_container_width=True, hide_index=True)
+                            dfs_para_pdf["Bônus 2 (Chave Final)"] = df_b2_rel
 
-                    # --- Geração do PDF ---
-                    if dfs_para_pdf:
-                        pdf_bytes = construir_pdf(f"Relatorio de Auditoria: {user_relatorio['nome']}", dfs_para_pdf)
-                        st.download_button("📄 Baixar Relatório em PDF", data=pdf_bytes, file_name="auditoria.pdf", mime="application/pdf")
+                    if dfs_para_pdf and FPDF:
+                        pdf_bytes = construir_pdf(f"Relatório de Auditoria: {user_relatorio['nome']}", dfs_para_pdf)
+                        st.download_button(label="📄 Baixar Relatório em PDF", data=pdf_bytes, file_name=f"auditoria_{user_relatorio['nome'].replace(' ', '_')}.pdf", mime="application/pdf")
 
             with adm_tab6:
                 st.subheader("🏆 Relatório de Resultados Oficiais (Gabaritos)")
@@ -1485,5 +1547,5 @@ else:
                 if st.form_submit_button("Criar Liga", use_container_width=True) and name_b_tenant and admin_b_tenant:
                     if not supabase.table("usuarios").select("email").eq("email", admin_b_tenant).execute().data: supabase.table("usuarios").insert({"email": admin_b_tenant, "nome": "Aguardando..."}).execute()
                     novo_b = supabase.table("boloes").insert({"nome": name_b_tenant}).execute().data[0]
-                    supabase.table("membros_bolao").insert({"id_bolao": novo_b['id'], "email_usuario": admin_b_tenant, "is_admin": True}).execute()
+                    supabase.table("membros_bolao").insert({"id_bolao": novo_b['id'], "email_usuario": admin_b_tenant, "is_admin": True, "status": 1}).execute()
                     st.success(f"Liga '{name_b_tenant}' ativada!"); st.rerun()
