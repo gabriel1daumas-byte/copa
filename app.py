@@ -167,7 +167,7 @@ def construir_pdf(titulo_principal, dfs_dict):
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     
-    # Título
+    # Título Principal
     pdf.set_font("Arial", 'B', 14)
     pdf.cell(0, 10, limpar_texto_pdf(titulo_principal), 0, 1, 'C')
     pdf.ln(5)
@@ -178,45 +178,82 @@ def construir_pdf(titulo_principal, dfs_dict):
         pdf.set_font("Arial", 'B', 11)
         pdf.cell(0, 10, limpar_texto_pdf(nome_tabela), 0, 1, 'L')
         
-        # Largura total 190mm
-        num_cols = len(df.columns)
-        col_w = 190 / num_cols
+        # --- MÁGICA DOS TAMANHOS DE COLUNA DINÂMICOS ---
+        total_w = 190 # Largura total útil da página A4
+        cols = list(df.columns)
+        num_cols = len(cols)
+        col_w = []
         
-        # Cabeçalho
+        # Se for a Tabela de JOGOS, aplicamos os tamanhos personalizados
+        if "Confronto" in cols:
+            for c in cols:
+                if c == "Fase": col_w.append(28 if num_cols == 6 else 35)
+                elif c == "Confronto": col_w.append(62 if num_cols == 6 else 75)
+                elif c == "Palpite": col_w.append(20 if num_cols == 6 else 25)
+                elif c == "Passa (Mata)": col_w.append(30)
+                elif c in ["Resultado Oficial", "Placar Oficial"]: col_w.append(35 if num_cols == 6 else 40)
+                elif c == "Pontos": col_w.append(15)
+                elif c == "Classificado": col_w.append(30)
+                else: col_w.append(total_w / num_cols)
+        
+        # Se for a Tabela de BÔNUS
+        elif "Gabarito Oficial" in cols or "Gabarito" in cols or "Classificados Oficiais" in cols:
+            for c in cols:
+                if c in ["Grupo", "Fase"]: col_w.append(25)
+                elif c in ["Palpite"]: col_w.append(75) 
+                elif c in ["Gabarito Oficial", "Gabarito", "Classificados Oficiais"]: col_w.append(75)
+                elif c in ["Pontos"]: col_w.append(15)
+                else: col_w.append(total_w / num_cols)
+                
+        # Se for a Tabela de RESUMO
+        elif "Categoria" in cols:
+            col_w = [140, 50]
+            
+        else:
+            col_w = [total_w / num_cols] * num_cols
+
+        # Normaliza a largura para garantir exatamente 190mm
+        fator = total_w / sum(col_w)
+        col_w = [w * fator for w in col_w]
+
+        # Cabeçalho da Tabela
         pdf.set_font("Arial", 'B', 8)
-        for col in df.columns:
-            pdf.cell(col_w, 8, limpar_texto_pdf(col), 1, 0, 'C')
+        for i, col in enumerate(cols):
+            pdf.cell(col_w[i], 8, limpar_texto_pdf(col), 1, 0, 'C')
         pdf.ln()
         
-        # Linhas da tabela
+        # Linhas da Tabela
         pdf.set_font("Arial", '', 7)
         for _, row in df.iterrows():
-            # Aumentamos a altura da linha base para permitir multi-line (Bônus)
-            line_height = 5 
+            line_height = 5
             
-            # Verifica quebra de página
-            if pdf.get_y() > 250: 
+            # Checa limite da página para repetir cabeçalho
+            if pdf.get_y() > 260: 
                 pdf.add_page()
                 pdf.set_font("Arial", 'B', 8)
-                for col in df.columns: pdf.cell(col_w, 8, limpar_texto_pdf(col), 1, 0, 'C')
+                for i, col in enumerate(cols):
+                    pdf.cell(col_w[i], 8, limpar_texto_pdf(col), 1, 0, 'C')
                 pdf.ln()
                 pdf.set_font("Arial", '', 7)
 
-            # Salva posição X inicial
             x_inicial = pdf.get_x()
             y_inicial = pdf.get_y()
+            max_y = y_inicial
             
-            # Desenha as células da linha usando MultiCell para aceitar o \n
+            # Alinhamento (Listas de Bônus ficam melhor à esquerda, placares ao centro)
+            align = 'L' if "Bônus" in nome_tabela else 'C'
+            
             for i, val in enumerate(row):
-                # Usamos 'L' para alinhar as listas (Bônus) à esquerda
-                pdf.multi_cell(col_w, line_height, limpar_texto_pdf(val), 1, 'L')
-                pdf.set_xy(x_inicial + (col_w * (i + 1)), y_inicial)
+                pdf.set_xy(x_inicial, y_inicial)
+                pdf.multi_cell(col_w[i], line_height, limpar_texto_pdf(val), 1, align)
+                
+                if pdf.get_y() > max_y:
+                    max_y = pdf.get_y()
+                
+                x_inicial += col_w[i]
             
-            # Pula 4 linhas de altura para comportar o texto com \n do Bônus 1
-            if "Bônus" in nome_tabela:
-                pdf.ln(line_height * 4) 
-            else:
-                pdf.ln(line_height + 2)
+            # Move para a próxima linha usando o ponto mais baixo atingido
+            pdf.set_xy(10, max_y)
             
         pdf.ln(5)
         
@@ -226,7 +263,7 @@ def construir_pdf(titulo_principal, dfs_dict):
             pdf_bytes = f.read()
     os.unlink(tmp.name)
     return pdf_bytes
-    
+
 # --- SESSÃO ---
 if "logado" not in st.session_state:
     st.session_state.update(logado=False, email_usuario="", nome_usuario="", is_superadmin=False, bolao_ativo_id=None, bolao_ativo_nome=None, is_admin_bolao_ativo=False, menu_atual="")
@@ -1043,143 +1080,95 @@ else:
                     pts_b2 = calcular_pontos_bonus2(b2_data[0] if b2_data else None, gab_b2)
                     
                     resumo_df = pd.DataFrame([
-                        {"Categoria": "Fase de Grupos", "Pontos Obtidos": pts_grupos},
-                        {"Categoria": "Mata-Mata", "Pontos Obtidos": pts_mata},
-                        {"Categoria": "Bônus 1 (Videntes)", "Pontos Obtidos": pts_b1},
-                        {"Categoria": "Bônus 2 (Chave Final)", "Pontos Obtidos": pts_b2},
-                        {"Categoria": "TOTAL GERAL", "Pontos Obtidos": pts_grupos + pts_mata + pts_b1 + pts_b2}
+                        {"Categoria": "Fase de Grupos", "Pontos": pts_grupos},
+                        {"Categoria": "Mata-Mata", "Pontos": pts_mata},
+                        {"Categoria": "Bônus 1", "Pontos": pts_b1},
+                        {"Categoria": "Bônus 2", "Pontos": pts_b2},
+                        {"Categoria": "TOTAL", "Pontos": pts_grupos + pts_mata + pts_b1 + pts_b2}
                     ])
                     st.table(resumo_df)
                     dfs_para_pdf["Resumo Consolidado"] = resumo_df
-                    st.divider()
                     
                     if filtro_rel in ["Todos", "Fase de Grupos", "Mata-Mata"]:
                         jogos_rel = []
                         for j in ordenar_jogos(all_jogos_adm):
-                            if not j.get('times_confirmados'): continue
                             if filtro_rel == "Fase de Grupos" and j.get('is_mata_mata'): continue
                             if filtro_rel == "Mata-Mata" and not j.get('is_mata_mata'): continue
-                            
                             p = mapa_palpites_user.get(str(j['id']))
                             
-                            if p:
-                                palpite_str = f"{p['gols_casa']} x {p['gols_fora']}"
-                                classif_palpite = p.get('classificado', '-') if j.get('is_mata_mata') else "-"
-                            else:
-                                palpite_str = "Não palpitou"
-                                classif_palpite = "-"
-                                
+                            palpite_str = f"{p['gols_casa']} x {p['gols_fora']}" if p else "-"
+                            classif_palpite = p.get('classificado', '-') if p and j.get('is_mata_mata') else "-"
+                            
                             if j.get('gols_casa_real') is not None:
                                 real_str = f"{j['gols_casa_real']} x {j['gols_fora_real']}"
-                                if j.get('is_mata_mata'):
-                                    pts = calcular_pontos_matamata(p['gols_casa'] if p else None, p['gols_fora'] if p else None, p.get('classificado') if p else None, j['gols_casa_real'], j['gols_fora_real'], j.get('classificado_real'))
-                                else:
-                                    pts = calcular_pontos_grupos(p['gols_casa'] if p else None, p['gols_fora'] if p else None, j['gols_casa_real'], j['gols_fora_real'])
+                                pts = calcular_pontos_matamata(p['gols_casa'] if p else None, p['gols_fora'] if p else None, p.get('classificado') if p else None, j['gols_casa_real'], j['gols_fora_real'], j.get('classificado_real')) if j.get('is_mata_mata') else calcular_pontos_grupos(p['gols_casa'] if p else None, p['gols_fora'] if p else None, j['gols_casa_real'], j['gols_fora_real'])
                             else:
                                 real_str = "Aguardando"
                                 pts = "-"
                                 
-                            tipo_fase = j['fase'] if j.get('is_mata_mata') else f"Grupo {get_grupo(j['time_casa'])}"
-                            
                             row_data = {
-                                "Fase": tipo_fase,
+                                "Fase": j['fase'] if j.get('is_mata_mata') else f"Grupo {get_grupo(j['time_casa'])}",
                                 "Confronto": f"{j['time_casa']} x {j['time_fora']}",
                                 "Palpite": palpite_str
                             }
                             if j.get('is_mata_mata') or filtro_rel == "Todos":
                                 row_data["Passa (Mata)"] = classif_palpite
-                                
                             row_data["Resultado Oficial"] = real_str
                             row_data["Pontos"] = str(pts)
                             
                             jogos_rel.append(row_data)
                             
-                        if jogos_rel:
-                            st.write(f"#### ⚽ Jogos ({filtro_rel if filtro_rel != 'Todos' else 'Grupos e Mata-Mata'})")
-                            df_jrel = pd.DataFrame(jogos_rel)
-                            st.dataframe(df_jrel, use_container_width=True, hide_index=True)
-                            dfs_para_pdf[f"Jogos ({filtro_rel})"] = df_jrel
-                        elif filtro_rel in ["Fase de Grupos", "Mata-Mata"]:
-                            st.info(f"Nenhum jogo encontrado para o filtro: {filtro_rel}.")
+                        df_jogos = pd.DataFrame(jogos_rel)
+                        if not df_jogos.empty:
+                            st.dataframe(df_jogos, use_container_width=True)
+                            dfs_para_pdf["Jogos e Resultados"] = df_jogos
 
                     if filtro_rel in ["Todos", "Bônus 1"]:
-                        st.write("#### 🔮 Bônus 1: Videntes (Classificação dos Grupos)")
-                        if not b1_data:
-                            st.info("O jogador ainda não preencheu o Bônus 1.")
-                        else:
-                            b1_rel = []
-                            for p in sorted(b1_data, key=lambda x: x['grupo']):
-                                grp = p['grupo']
-                                gab = gabaritos_b1.get(grp)
-                                
-                                palp_fmt = f"1o {p['pos1']}\n2o {p['pos2']}\n3o {p['pos3']}\n4o {p['pos4']}"
-                                
-                                if gab:
-                                    gab_fmt = f"1o {gab['pos1']}\n2o {gab['pos2']}\n3o {gab['pos3']}\n4o {gab['pos4']}"
-                                    acertos = sum(1 for pos in ['pos1', 'pos2', 'pos3', 'pos4'] if p[pos] == gab[pos])
-                                    pts = acertos + (2 if acertos == 4 else 0)
-                                else:
-                                    gab_fmt = "Aguardando gabarito"
-                                    pts = "-"
-                                
-                                b1_rel.append({
-                                    "Grupo": grp,
-                                    "Palpite": palp_fmt,
-                                    "Gabarito Oficial": gab_fmt,
-                                    "Pontos": str(pts)
-                                })
-                                
-                            df_b1_rel = pd.DataFrame(b1_rel)
-                            st.dataframe(df_b1_rel, use_container_width=True, hide_index=True)
-                            dfs_para_pdf["Bônus 1 (Videntes)"] = df_b1_rel
+                        b1_lista = []
+                        for p in sorted(b1_data, key=lambda x: x['grupo']):
+                            gab = gabaritos_b1.get(p['grupo'])
+                            # Usamos \n para separar cada posição em uma linha
+                            palp_fmt = f"1o {p['pos1']}\n2o {p['pos2']}\n3o {p['pos3']}\n4o {p['pos4']}"
+                            if gab:
+                                gab_fmt = f"1o {gab['pos1']}\n2o {gab['pos2']}\n3o {gab['pos3']}\n4o {gab['pos4']}"
+                                acertos = sum(1 for pos in ['pos1', 'pos2', 'pos3', 'pos4'] if p[pos] == gab[pos])
+                                pts = acertos + (2 if acertos == 4 else 0)
+                            else:
+                                gab_fmt = "Aguardando gabarito"
+                                pts = "-"
+                            b1_lista.append({"Grupo": p['grupo'], "Palpite": palp_fmt, "Gabarito Oficial": gab_fmt, "Pontos": str(pts)})
+                        df_b1 = pd.DataFrame(b1_lista)
+                        if not df_b1.empty:
+                            st.dataframe(df_b1, use_container_width=True)
+                            dfs_para_pdf["Bônus 1 (Videntes)"] = df_b1
 
                     if filtro_rel in ["Todos", "Bônus 2"]:
-                        st.write("#### 🛤️ Bônus 2: Chave Final")
-                        if not b2_data:
-                            st.info("O jogador ainda não preencheu a Árvore do Mata-Mata.")
-                        else:
+                        if b2_data:
                             p = b2_data[0]
-                            b2_rel = []
-                            
-                            fases_b2_labels = [
-                                ("Oitavas", "oitavas"),
-                                ("Quartas", "quartas"),
-                                ("Semis", "semis"),
-                                ("Finalistas", "finalistas"),
-                                ("Campeão", "campeao")
-                            ]
-                            
-                            for label, col in fases_b2_labels:
+                            b2_lista = []
+                            for f, col in [("Oitavas", "oitavas"), ("Quartas", "quartas"), ("Semis", "semis"), ("Finalistas", "finalistas"), ("Campeão", "campeao")]:
                                 palp_val = p.get(col, "")
                                 palp_str = palp_val.replace(",", "\n") if palp_val else "-"
-                                
                                 gab_val = gab_b2.get(col, "")
                                 gab_str = gab_val.replace(",", "\n") if gab_val else "Aguardando gabarito"
-                                
                                 pts = "-"
                                 if gab_val and palp_val:
-                                    m_list = palp_val.split(',')
-                                    g_list = gab_val.split(',')
+                                    m_list, g_list = palp_val.split(','), gab_val.split(',')
                                     if col == 'oitavas': pts = len(set(m_list) & set(g_list)) * 1
                                     elif col == 'quartas': pts = len(set(m_list) & set(g_list)) * 2
                                     elif col == 'semis': pts = len(set(m_list) & set(g_list)) * 3
                                     elif col == 'finalistas': pts = len(set(m_list) & set(g_list)) * 5
                                     elif col == 'campeao': pts = 10 if palp_val == gab_val else 0
-                                    
-                                b2_rel.append({
-                                    "Fase": label,
-                                    "Palpite": palp_str,
-                                    "Gabarito Oficial": gab_str,
-                                    "Pontos": str(pts)
-                                })
-                                
-                            df_b2_rel = pd.DataFrame(b2_rel)
-                            st.dataframe(df_b2_rel, use_container_width=True, hide_index=True)
-                            dfs_para_pdf["Bônus 2 (Chave Final)"] = df_b2_rel
+                                b2_lista.append({"Fase": f, "Palpite": palp_str, "Gabarito Oficial": gab_str, "Pontos": str(pts)})
+                            df_b2 = pd.DataFrame(b2_lista)
+                            if not df_b2.empty:
+                                st.dataframe(df_b2, use_container_width=True)
+                                dfs_para_pdf["Bônus 2 (Chave Final)"] = df_b2
 
-                    if dfs_para_pdf and FPDF:
-                        pdf_bytes = construir_pdf(f"Relatório de Auditoria: {user_relatorio['nome']}", dfs_para_pdf)
-                        st.download_button(label="📄 Baixar Relatório em PDF", data=pdf_bytes, file_name=f"auditoria_{user_relatorio['nome'].replace(' ', '_')}.pdf", mime="application/pdf")
+                    # --- Geração do PDF ---
+                    if dfs_para_pdf:
+                        pdf_bytes = construir_pdf(f"Relatorio de Auditoria: {user_relatorio['nome']}", dfs_para_pdf)
+                        st.download_button("📄 Baixar Relatório em PDF", data=pdf_bytes, file_name="auditoria.pdf", mime="application/pdf")
 
             with adm_tab6:
                 st.subheader("🏆 Relatório de Resultados Oficiais (Gabaritos)")
@@ -1209,7 +1198,7 @@ else:
                         gab_g = supabase.table("gabarito_grupos").select("*").execute().data
                         if not gab_g: st.info("O gabarito oficial dos grupos ainda não foi lançado.")
                         else:
-                            gab_b1_rows = [{"Grupo": g['grupo'], "1º Lugar": g.get('pos1', '-'), "2º Lugar": g.get('pos2', '-'), "3º Lugar": g.get('pos3', '-'), "4º Lugar": g.get('pos4', '-')} for g in sorted(gab_g, key=lambda x: x['grupo'])]
+                            gab_b1_rows = [{"Grupo": g['grupo'], "Palpite": f"1o {g.get('pos1', '-')}\n2o {g.get('pos2', '-')}\n3o {g.get('pos3', '-')}\n4o {g.get('pos4', '-')}"} for g in sorted(gab_g, key=lambda x: x['grupo'])]
                             df_g1 = pd.DataFrame(gab_b1_rows)
                             st.dataframe(df_g1, use_container_width=True, hide_index=True)
                             dfs_res_pdf["Gabarito Bônus 1"] = df_g1
