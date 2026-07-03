@@ -107,14 +107,27 @@ def calcular_pontos_grupos(p_c, p_f, r_c, r_f):
 
 def calcular_pontos_matamata(p_c, p_f, p_class, r_c, r_f, r_class):
     if pd.isna(r_c) or pd.isna(r_f) or pd.isna(p_c) or pd.isna(p_f) or pd.isna(r_class): return 0
+    
     res_p = 'C' if p_c > p_f else ('F' if p_f > p_c else 'E')
     res_r = 'C' if r_c > r_f else ('F' if r_f > r_c else 'E')
+    
     acertou_placar = (p_c == r_c and p_f == r_f)
     acertou_classificado = (str(p_class).strip() == str(r_class).strip())
-    if acertou_placar and acertou_classificado: return 4
+    
     pontos = 0
-    if acertou_classificado: pontos += 2
-    if res_p == res_r: pontos += 1
+    
+    # 1. Acertou o resultado (tendência de V/E/D) = +1 ponto
+    if res_p == res_r: 
+        pontos += 1
+        
+    # 2. Acertou o placar exato = +1 ponto (acumula com o resultado, gerando 2 pontos)
+    if acertou_placar: 
+        pontos += 1
+        
+    # 3. Acertou o time classificado = +2 pontos
+    if acertou_classificado: 
+        pontos += 2
+        
     return pontos
 
 def calcular_pontos_bonus1(meus_bonus, gabaritos):
@@ -1004,7 +1017,6 @@ else:
                     if st.form_submit_button("💾 Salvar Alterações de Status", use_container_width=True):
                         for em, is_active in novos_status.items():
                             val = 1 if is_active else 0
-                            # Atualiza todos que foram alterados na tela
                             supabase.table("membros_bolao").update({"status": val}).eq("id_bolao", st.session_state.bolao_ativo_id).eq("email_usuario", em).execute()
                         st.success("Status atualizados com sucesso!")
                         st.rerun()
@@ -1033,7 +1045,6 @@ else:
                     palpites_feitos = {(p['email_usuario'].lower(), p['id_jogo']) for p in palpites_proximos}
                     proximos_faltando = []
                     
-                    # Usa apenas usuários ativos para cobrar
                     for u in usuarios_ativos_dados:
                         u_email = u['email'].lower()
                         if u['nome'] == "Aguardando...": continue
@@ -1054,7 +1065,6 @@ else:
                 st.subheader("🔮 Alerta: Previsões Incompletas na Árvore do Mata-Mata (Bônus 2)")
                 bonus2_dados = buscar_dados_paginados("bonus_chave", "email_usuario, campeao", "email_usuario", emails_ativos)
                 feitos_b2 = {b['email_usuario'].lower(): True for b in bonus2_dados if b.get('campeao')}
-                # Usa apenas usuários ativos para cobrar
                 bonus2_faltando = [{"Jogador": u['nome'], "E-mail": u['email'].lower()} for u in usuarios_ativos_dados if u['nome'] != "Aguardando..." and not feitos_b2.get(u['email'].lower())]
                         
                 if not bonus2_faltando: st.success("🥇 Perfeito! Absolutamente todos finalizaram a Árvore do Mata-Mata!")
@@ -1069,8 +1079,6 @@ else:
 
             with adm_tab5:
                 st.subheader("📊 Relatório de Auditoria de Usuário")
-                
-                # Permite ver relatório de todos, mas avisa se está inativo no selectbox
                 user_relatorio = st.selectbox("Selecione o jogador:", usuarios_dados, format_func=lambda x: f"{x['nome']} {'(Inativo)' if x['email'].lower() not in emails_ativos else ''}", key="rel_user_select")
                 email_alvo = user_relatorio['email']
                 filtro_rel = st.radio("Filtro de Relatório:", ["Todos", "Fase de Grupos", "Mata-Mata", "Bônus 1", "Bônus 2"], horizontal=True, key="filtro_rel_usuario")
@@ -1094,11 +1102,11 @@ else:
                     pts_b2 = calcular_pontos_bonus2(b2_data[0] if b2_data else None, gab_b2)
                     
                     resumo_df = pd.DataFrame([
-                        {"Categoria": "Fase de Grupos", "Pontos": pts_grupos},
-                        {"Categoria": "Mata-Mata", "Pontos": pts_mata},
-                        {"Categoria": "Bônus 1", "Pontos": pts_b1},
-                        {"Categoria": "Bônus 2", "Pontos": pts_b2},
-                        {"Categoria": "TOTAL", "Pontos": pts_grupos + pts_mata + pts_b1 + pts_b2}
+                        {"Categoria": "Fase de Grupos", "Pontos Obtidos": pts_grupos},
+                        {"Categoria": "Mata-Mata", "Pontos Obtidos": pts_mata},
+                        {"Categoria": "Bônus 1 (Videntes)", "Pontos Obtidos": pts_b1},
+                        {"Categoria": "Bônus 2 (Chave Final)", "Pontos Obtidos": pts_b2},
+                        {"Categoria": "TOTAL GERAL", "Pontos Obtidos": pts_grupos + pts_mata + pts_b1 + pts_b2}
                     ])
                     st.table(resumo_df)
                     dfs_para_pdf["Resumo Consolidado"] = resumo_df
@@ -1229,8 +1237,8 @@ else:
                             dfs_para_pdf["Bônus 2 (Chave Final)"] = df_b2_rel
 
                     if dfs_para_pdf and FPDF:
-                        pdf_bytes = construir_pdf(f"Relatório de Auditoria: {user_relatorio['nome']}", dfs_para_pdf)
-                        st.download_button(label="📄 Baixar Relatório em PDF", data=pdf_bytes, file_name=f"auditoria_{user_relatorio['nome'].replace(' ', '_')}.pdf", mime="application/pdf")
+                        pdf_bytes = construir_pdf(f"Relatorio de Auditoria: {user_relatorio['nome']}", dfs_para_pdf)
+                        st.download_button(label="📄 Baixar Relatorio em PDF", data=pdf_bytes, file_name=f"auditoria_{user_relatorio['nome'].replace(' ', '_')}.pdf", mime="application/pdf")
 
             with adm_tab6:
                 st.subheader("🏆 Relatório de Resultados Oficiais (Gabaritos)")
